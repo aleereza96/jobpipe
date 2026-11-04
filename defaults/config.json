@@ -1,0 +1,32 @@
+{
+  "use_arbeitnow": true,
+  "arbeitnow_pages": 5,
+  "boards": {
+    "greenhouse": [],
+    "lever": []
+  },
+  "location_keywords": [],
+  "include_keywords": [],
+  "exclude_keywords": [],
+  "visa_keywords": [],
+  "min_score": 70,
+  "min_salary_eur": 0,
+  "max_llm_jobs_per_run": 20,
+  "workers": 1,
+  "alert_days": 3,
+  "alert_senders": [
+    "jobalerts-noreply@linkedin.com",
+    "stepstone"
+  ],
+  "candidate_note": "",
+  "anthropic_model": "claude-sonnet-5-5",
+  "ai_provider": "codex",
+  "codex_model": null,
+  "codex_command": "codex",
+  "ai_timeout_seconds": 180,
+  "role_keywords": [],
+  "exclude_german_required": false,
+  "min_relevance": 4,
+  "include_unknown_location": true,
+  "include_relocation_outside_locations": false
+}

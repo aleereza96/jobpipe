@@ -1,0 +1,17 @@
+*
+!Dockerfile
+!requirements.txt
+!server.py
+!jobpipe.py
+!sources.py
+!ai_provider.py
+!web/
+!web/**
+!defaults/
+!defaults/**
+!gmail_alerts.py
+
+!cv_pdf.py
+!cv_source.py
+!cv_review.py
+!search_rank.py

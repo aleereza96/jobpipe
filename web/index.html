@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jobpipe · Your next move</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside class="sidebar"><a href="#jobs" class="brand"><span class="brand-mark">j<span>↗</span></span>jobpipe<span class="brand-dot">●</span></a><div class="workspace-label">YOUR WORKSPACE</div><nav aria-label="Main navigation">
+<button data-view="jobs" class="nav active"><span>▦</span> Opportunities <b id="nav-count">0</b></button>
+<button data-view="followups" class="nav"><span>◷</span> Follow-ups <b id="nav-due">0</b></button>
+<button data-view="inbox" class="nav"><span>⊕</span> Add a posting</button>
+<button data-view="boards" class="nav">Job sources</button>
+<button data-view="alerts" class="nav"><span>✉</span> Job alerts</button>
+<div class="nav-divider"></div><button data-view="cv" class="nav"><span>▤</span> My CV</button><button data-view="settings" class="nav"><span>⚙</span> Preferences</button></nav>
+<div class="sidebar-bottom"><div class="local-badge"><i></i> LOCAL WORKSPACE</div><p>Your search. Your pace.<br>You make the final move.</p><button id="connection" class="connection"><span class="avatar">C</span><span><strong>Codex connection</strong><small id="auth-label">Check in Preferences</small></span><span>↗</span></button></div></aside>
+<div class="shell"><header><div class="breadcrumb">Workspace <span>/</span> <strong id="crumb">Opportunities</strong></div><div class="header-right"><span class="privacy"><i></i> On your computer</span><button class="icon-button" id="show-activity" aria-label="Show search activity">☷</button></div></header>
+<main>
+<section id="jobs-view" class="view"><div class="page-heading"><div><div class="eyebrow">A LITTLE MOMENTUM, EVERY DAY</div><h1>Your next move starts here<span>.</span></h1><p>Find the right fit. Make every application count.</p></div><button class="primary start-search">↗ <span>Find opportunities</span></button></div>
+<div class="stats"><button class="stat" data-filter="all"><span class="stat-label">Jobs collected <span>▦</span></span><strong id="stat-total">—</strong><small>Your search, in one place</small></button><button class="stat" data-filter="shortlisted"><span class="stat-label">Ready to review <span>✧</span></span><strong id="stat-shortlisted">—</strong><small><i class="dot green"></i> Matched to your experience</small></button><button class="stat" data-filter="applied"><span class="stat-label">Applications sent <span>↗</span></span><strong id="stat-applied">—</strong><small>One step closer</small></button><button class="stat" data-go="followups"><span class="stat-label">Follow-ups due <span>◷</span></span><strong id="stat-due">—</strong><small>Keep the conversation going</small></button></div>
+<div class="section-heading"><div><h2>Opportunities</h2><p>A clear view of where you could go next.</p></div><a class="subtle-button" href="/api/export" download>↓ Export CSV</a></div>
+<div class="jobs-panel"><div class="table-toolbar"><div class="tabs" role="group" aria-label="Filter jobs"><button class="selected" data-filter="shortlisted">Shortlisted</button><button data-filter="applied">Applied</button><button data-filter="all">All jobs</button><button data-filter="skipped">Skipped</button></div><label class="search"><span>⌕</span><input id="job-search" placeholder="Search roles, companies…" aria-label="Search jobs"></label></div><div id="jobs-list"></div><div class="table-footer"><span id="result-count"></span><div class="pagination"><button id="prev-page" class="subtle-button">← Previous</button><button id="next-page" class="subtle-button">Next →</button></div></div></div>
+<div class="footnote"><span>✧</span> AI helps you prepare. You review the details and apply when you’re ready.</div></section>
+<section id="followups-view" class="view hidden"><div class="page-heading"><div><div class="eyebrow">KEEP THE DOOR OPEN</div><h1>A thoughtful follow-up<span>.</span></h1><p>Applications due for a check-in, seven days after you marked them applied.</p></div></div><div id="followups-list" class="jobs-panel"></div></section>
+<section id="boards-view" class="view hidden">
+  <div class="page-heading"><div><h1>Job sources</h1><p>Add public Greenhouse or Lever boards to your searches.</p></div></div>
+  <form id="boards-form" class="form-card">
+    <label>Job board URL<input name="url" type="url" required placeholder="https://jobs.lever.co/company"></label>
+    <button class="secondary" type="submit">Preview listings</button>
+    <button id="boards-save" class="primary" type="button" disabled>Save source</button>
+    <p id="boards-status" role="status"></p>
+    <ul id="boards-preview"></ul>
+    <p>For other websites, <button type="button" class="subtle-button" data-go="inbox">add a posting</button>.</p>
+  </form>
+  <div class="form-card"><h2>Saved sources</h2><ul id="boards-list"></ul></div>
+</section>
+<section id="alerts-view" class="view hidden">
+  <div class="page-heading"><div><h1>Job alerts</h1><p>Bring job alerts from Gmail into your search.</p></div></div>
+  <div class="form-card">
+    <h2>Gmail accounts</h2>
+    <p id="gmail-status" role="status"></p>
+    <div class="form-actions">
+      <button id="gmail-connect" class="primary" type="button">Connect Gmail</button>
+      <button id="gmail-sync" class="secondary" type="button">Import alerts</button>
+    </div>
+    <div id="gmail-accounts"></div>
+  </div>
+  <div class="form-card">
+    <h2>Recent alerts</h2>
+    <p>Jobs with a description go into your next search. Add a description to queue a link-only alert.</p>
+    <div id="gmail-leads"></div>
+  </div>
+</section>
+<section id="inbox-view" class="view hidden"><div class="page-heading"><div><div class="eyebrow">FOUND SOMETHING GOOD?</div><h1>Bring it into the picture<span>.</span></h1><p>Paste a posting from any job board. We’ll score it on your next search.</p></div></div><form id="inbox-form" class="form-card"><div class="form-top"><span class="form-icon">⊕</span><div><h2>Add a job posting</h2><p>A good opportunity can come from anywhere.</p></div></div><div class="two-columns"><label>Job title<input name="title" required maxlength="300" placeholder="Senior frontend engineer"></label><label>Company<input name="company" maxlength="300" placeholder="Company name"></label></div><label>Posting link <span class="optional">optional</span><input name="url" type="url" placeholder="https://…"></label><label>Full job description<textarea name="description" required rows="12" placeholder="Paste the complete job description here, including requirements and benefits."></textarea></label><div class="form-actions"><small>Saved locally. Nothing is sent until you start a search.</small><button class="primary" type="submit">Add to inbox ↗</button></div></form></section>
+<section id="cv-view" class="view hidden"><div class="page-heading"><div><div class="eyebrow">YOUR EXPERIENCE, IN YOUR WORDS</div><h1>Start with your story<span>.</span></h1><p>Your CV is the source of truth for matching and application drafts.</p></div><button class="primary" id="save-cv">Save CV</button></div><div class="form-card wide"><div class="info-strip">✧ Use verified facts. Application drafts are instructed to use only what appears in your CV.</div><div class="two-columns">
+<label for="cv-file">Upload CV<input id="cv-file" type="file" accept=".md,.tex"></label>
+<label for="cv-format">Source format<select id="cv-format"><option value="md">Markdown (.md)</option><option value="tex">LaTeX (.tex)</option></select></label>
+</div>
+<p id="cv-file-status" role="status">Upload or paste your CV, then save it for future searches.</p>
+<label for="cv-text">CV source</label><textarea id="cv-text" class="cv-editor" spellcheck="false" rows="25"></textarea><div class="form-actions">
+<div><button id="score-cv" class="secondary" type="button">Score CV</button>
+<button id="suggest-cv" class="secondary" type="button">Suggest improvements</button></div>
+<small>Review uses your configured AI provider.</small>
+</div>
+<p id="cv-review-status" role="status"></p>
+<div id="cv-review-results"></div>
+<small>Save to use your edits in future searches. Job PDFs use the Jobpipe layout.</small></div></section>
+<section id="settings-view" class="view hidden"><div class="page-heading"><div><div class="eyebrow">MAKE THE SEARCH YOURS</div><h1>A little direction goes a long way<span>.</span></h1><p>Tell Jobpipe what matters to you.</p></div><button class="primary" id="save-settings">Save preferences</button></div><div class="settings-grid"><form id="settings-form" class="form-card"><h2>Search preferences</h2><div class="two-columns"><label>Minimum match score<input name="min_score" type="number" min="0" max="100" required></label><label>Minimum annual salary · EUR<input name="min_salary_eur" type="number" min="0" max="1000000" required></label></div><label>Skills & role keywords <span class="optional">comma separated</span><textarea name="include_keywords" rows="3"></textarea></label><label>Exclude keywords<textarea name="exclude_keywords" rows="2"></textarea></label><label>Preferred job titles <span class="optional">comma separated, optional</span><textarea name="role_keywords" rows="2" placeholder="Enter titles or title phrases"></textarea></label>
+<label>Minimum local relevance <span class="optional">0–23, before AI scoring</span><input name="min_relevance" type="number" min="0" max="23" required></label>
+<small>A cutoff of 4 usually requires a preferred title, a skill in the job title, or a skill in the requirements.</small>
+<label>Sponsorship and relocation phrases<textarea name="visa_keywords" rows="2"></textarea></label>
+<label class="checkbox"><input name="include_unknown_location" type="checkbox"> Include postings with no listed location</label>
+<label class="checkbox"><input name="include_relocation_outside_locations" type="checkbox"> Include other locations when a relocation phrase matches</label>
+<label class="checkbox"><input name="exclude_german_required" type="checkbox"> Exclude jobs that require fluent German</label>
+<label>Locations<textarea name="location_keywords" rows="3"></textarea></label><label>Candidate note<textarea name="candidate_note" rows="4"></textarea></label><h2 class="form-section">Sources</h2><label class="checkbox"><input name="use_arbeitnow" type="checkbox"> Collect from Arbeitnow</label><label>Arbeitnow pages<input name="arbeitnow_pages" type="number" min="1" max="30" required></label><label>Greenhouse company boards<input name="greenhouse" placeholder="company-slug"></label><label>Lever company boards<input name="lever" placeholder="company-slug"></label><h2 class="form-section">AI preferences</h2><div class="two-columns"><label>Provider<select name="ai_provider"><option value="codex">Codex CLI</option><option value="anthropic">Anthropic API</option></select></label><label>Jobs per search<input name="max_llm_jobs_per_run" type="number" min="1" max="200" required></label></div><label>Codex model <span class="optional">blank uses CLI default</span><input name="codex_model" maxlength="100"></label><label>Anthropic model<input name="anthropic_model" maxlength="100"></label><div class="two-columns"><label>Parallel workers<input name="workers" type="number" min="1" max="8" required></label><label>Timeout per AI call · seconds<input name="ai_timeout_seconds" type="number" min="10" max="1800" required></label></div></form><aside class="settings-aside"><div class="form-card connection-card"><span class="large-icon">✧</span><h2>Your AI connection</h2><p id="auth-message">Check whether Codex is ready.</p><button id="check-auth" class="secondary">Check connection</button><hr><h3>First-time Docker sign-in</h3><p>Run this in the Jobpipe folder:</p><code>docker compose exec jobpipe codex login --device-auth</code><p>Open the link shown in your terminal and enter the code. Then check the connection here.</p><small>Device login may need enabling in your ChatGPT security settings. Your sign-in is stored in a separate Docker volume.</small><hr><h3>Using Anthropic?</h3><p>Set <code>ANTHROPIC_API_KEY</code> in a local <code>.env</code> file and restart the container. Keys are never entered into this dashboard.</p></div></aside></div></section>
+<section id="activity-panel" class="activity hidden" aria-label="Search activity"><div class="activity-head"><div><span id="run-indicator" class="dot green"></span><h2>Search activity</h2><span id="run-state">Idle</span></div><div><button id="stop-search" class="subtle-button hidden">Stop search</button><button id="close-activity" class="icon-button" aria-label="Close activity">×</button></div></div><p id="run-caption">Start a search to collect, score, and draft applications.</p><p id="search-counts" role="status"></p><pre id="run-logs">Your progress will appear here.</pre></section>
+</main><footer>JOBPIPE <span>Small steps. Better opportunities.</span><span>Made for your next chapter ↗</span></footer></div>
+<div id="drawer-backdrop" class="backdrop hidden"></div><aside id="job-drawer" class="drawer hidden" aria-label="Job details" role="dialog" aria-modal="true" aria-labelledby="detail-title"><div class="drawer-top"><span>OPPORTUNITY DETAILS</span><button id="close-drawer" class="icon-button" aria-label="Close details">×</button></div><div id="job-detail"></div></aside>
+<div id="toast" class="toast hidden" role="status"></div>
+</body></html>
