@@ -34,6 +34,19 @@
   <div class="page-heading"><div><h1>Job alerts</h1><p>Bring job alerts from Gmail into your search.</p></div></div>
   <div class="form-card">
     <h2>Gmail accounts</h2>
+    <details id="gmail-setup"><summary>Set up Google connection · no terminal needed</summary>
+    <ol>
+      <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> and create or select a project.</li>
+      <li>Enable the Gmail API in the API Library.</li>
+      <li>Configure Google Auth Platform branding and audience. For a personal app in Testing, add your Gmail address under Test users.</li>
+      <li>Under Clients, create an OAuth client with application type <strong>Desktop app</strong>. Download its JSON file.</li>
+      <li>Upload that file below, then choose <strong>Connect Gmail</strong> and approve access on Google's sign-in page.</li>
+    </ol>
+    <p>The file and account grants stay in your local Jobpipe data. Read-only Gmail permission allows reading email; Jobpipe searches supported job-alert senders. Testing grants may expire and require reconnection.</p>
+    <label>Google Desktop app JSON<input id="gmail-client-upload" type="file" accept=".json,application/json"></label>
+    <p id="gmail-setup-result" role="status"></p>
+    <p><a href="https://developers.google.com/workspace/gmail/api/quickstart/python" target="_blank" rel="noopener noreferrer">Google setup guide</a></p>
+    </details>
     <p id="gmail-status" role="status"></p>
     <div class="form-actions">
       <button id="gmail-connect" class="primary" type="button">Connect Gmail</button>

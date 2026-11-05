@@ -150,19 +150,39 @@ live job-board or AI provider calls.
 
 ## Gmail job alerts
 
-1. In Google Cloud, enable the Gmail API and create a **Desktop app** OAuth client.
-   Set up the consent screen and add your Gmail addresses as test users if the app
-   is in Testing. Google may expire grants from external apps in Testing after seven days.
-2. Download the Desktop client's JSON file and save it as `gmail-client.json`
-   in the Jobpipe folder beside `compose.yaml`.
-3. Open the local dashboard in your regular browser. Under **Job alerts**, select
-   **Connect Gmail** and approve read-only access. Repeat for each account.
-4. Choose **Import alerts** or start a search. Jobpipe checks the last 14 days for
-   LinkedIn, Glassdoor, Indeed and StepStone alerts. It removes tracking parameters
-   from supported posting links and merges copies of the same link across accounts.
-   An alert with a single listing and a sufficiently detailed, explicitly labeled
-   description enters scoring. For other links, open the posting and paste its
-   description into the alert row. Tracking-only and unsupported links are skipped.
+Once Jobpipe is running, Gmail setup, sign-in, and imports require no terminal
+commands. Open [Job alerts](http://localhost:8787/#alerts) in your regular browser.
+
+1. Expand **Set up Google connection · no terminal needed**.
+2. Follow the links to Google Cloud Console. Create or select a project, enable
+   the Gmail API, and configure Google Auth Platform branding and audience.
+   If the app is in Testing, add each Gmail address you want to connect as a test user.
+3. Under **Clients**, create an OAuth client with application type **Desktop app**.
+   Download its JSON file.
+4. Upload that JSON using **Google Desktop app JSON** in Jobpipe. Jobpipe validates
+   and saves it locally; you do not need to rename or move the file yourself.
+5. Click **Connect Gmail**, sign in on Google's page, and approve read-only access.
+   Repeat this step for each account. If Google setup is already saved, skip
+   directly to this step.
+6. Click **Import alerts**, or start a search.
+
+Google's one-time app setup still takes place on its website. For detailed setup
+instructions, see [Google's Gmail API guide](https://developers.google.com/workspace/gmail/api/quickstart/python).
+Google may expire grants from external apps in Testing after seven days; reconnect
+the affected account if authorization expires.
+
+Jobpipe checks the last 14 days for LinkedIn, Glassdoor, Indeed and StepStone alerts.
+It removes tracking parameters from supported posting links and merges copies of
+the same link across accounts. An alert with a single listing and a sufficiently
+detailed, explicitly labeled description enters scoring. For other links, open the
+posting and paste its description into the alert row. Tracking-only and unsupported
+links are skipped. XING and WeAreDevelopers do not yet have automatic connectors;
+use **Add a posting** for those sites.
+
+The uploaded app configuration is saved as `gmail-client.json` with restricted
+file permissions. It is excluded from Git and the Docker build context. The
+dashboard never returns its secret. To replace the Google app configuration,
+disconnect existing accounts first, upload the replacement, then reconnect them.
 
 Account grants and extracted leads are stored locally under `.gmail/`. Disconnecting
 removes the local grant and keeps imported leads. You can revoke Google access from

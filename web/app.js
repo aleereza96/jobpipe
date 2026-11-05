@@ -96,7 +96,7 @@ async function loadAlerts() {
   $('#gmail-sync').disabled = !configured || !accounts.length;
   $('#gmail-status').textContent = configured
     ? 'Connected accounts sync when you start a search.'
-    : 'Set up the Google OAuth Desktop client file first. See Gmail job alerts in the Jobpipe README.';
+    : 'Open Set up Google connection below and upload your Desktop app JSON, then connect Gmail.';
   $('#gmail-accounts').replaceChildren();
   for (const account of accounts) {
     const row = document.createElement('p');
@@ -340,3 +340,14 @@ queueToggle.className='checkbox';
 queueToggle.innerHTML='<input type="checkbox" id="review-queue"> Focused review queue';
 document.querySelector('#job-search').parentElement.append(queueToggle);
 queueToggle.querySelector('input').addEventListener('change',safely(async()=>{state.offset=0;await loadJobs();}));
+
+$('#gmail-client-upload').addEventListener('change', safely(async event => {
+ const file=event.target.files[0];if(!file)return;
+ try {
+  if(file.size>20000)throw new Error('Choose the small JSON downloaded from Google.');
+  let client;try{client=JSON.parse(await file.text());}catch{throw new Error('This is not a valid JSON file.');}
+  await api('/api/gmail/setup',{client});
+  $('#gmail-setup-result').textContent='Google setup saved. Choose Connect Gmail to sign in.';
+  await loadAlerts();
+ } finally {event.target.value='';}
+}));

@@ -392,6 +392,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({'count': len(jobs), 'jobs': [
                     {'title': job['title'], 'location': job['location']} for job in jobs[:10]
                 ]})
+            if path == '/api/gmail/setup':
+                client = body.get('client')
+                installed = client.get('installed') if isinstance(client, dict) else None
+                if not isinstance(installed, dict) or any(
+                    not isinstance(installed.get(key), str) or not installed[key].strip() or len(installed[key]) > 2000
+                    for key in ('client_id', 'client_secret')):
+                    raise ValueError('Upload the JSON downloaded for a Google OAuth Desktop app.')
+                if not installed['client_id'].endswith('.apps.googleusercontent.com'):
+                    raise ValueError('Invalid Google client ID.')
+                with LOCK:
+                    with gmail_alerts.database(DATA) as con:
+                        if con.execute('SELECT 1 FROM accounts LIMIT 1').fetchone():
+                            raise ValueError('Disconnect existing Gmail accounts before replacing the Google app.')
+                    target = DATA / 'gmail-client.json'
+                    temp = target.with_suffix('.json.tmp')
+                    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                    with os.fdopen(fd, 'w') as stream:
+                        json.dump({'installed': {key: installed[key] for key in ('client_id', 'client_secret')}}, stream)
+                    os.chmod(temp, 0o600)
+                    temp.replace(target)
+                    GMAIL_PENDING.clear()
+                return self.reply({'ok': True})
             if path == '/api/gmail/connect':
                 redirect = 'http://' + self.headers['Host'] + '/api/gmail/callback'
                 state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)

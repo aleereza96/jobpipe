@@ -43,6 +43,20 @@ class DashboardTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw.startswith(b'{') else raw
 
+    def test_gmail_ui_setup(self):
+        self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
+        client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}
+        self.assertEqual(self.request('/api/gmail/setup', {'client': client})[0], 200)
+        path = self.root / 'gmail-client.json'
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.request('/api/gmail')[1]['configured'], True)
+        with server.connect() as con:
+            pass
+        import gmail_alerts
+        with gmail_alerts.database(self.root) as con:
+            con.execute("INSERT INTO accounts(email,refresh) VALUES('test@example.com','fake')")
+        self.assertEqual(self.request('/api/gmail/setup', {'client': client})[0], 400)
+
     def test_requirements_feedback_and_queue(self):
         import search_rank
         cfg = {'sponsorship_required': True}
