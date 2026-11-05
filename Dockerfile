@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt 'anthropic>=0.40,<1' \
     && mkdir -p /data /home/node/.codex \
     && printf 'cli_auth_credentials_store = "file"\n' > /home/node/.codex/config.toml \
     && chown -R node:node /data /home/node/.codex
-COPY --chown=node:node server.py jobpipe.py sources.py ai_provider.py gmail_alerts.py cv_pdf.py cv_source.py cv_review.py search_rank.py ./
+COPY --chown=node:node server.py jobpipe.py sources.py ai_provider.py gmail_alerts.py cv_pdf.py cv_source.py cv_review.py search_rank.py dedup.py ./
 COPY --chown=node:node web/ ./web/
 COPY --chown=node:node defaults/ ./defaults/
 USER node

@@ -254,3 +254,27 @@ Preferences. It pages through existing results in score order without inventing
 matches to fill the page. Unprocessed candidates persist in SQLite and are checked
 against current preferences on subsequent searches. Saved source text may become
 stale; expiry verification is not implemented.
+
+## Duplicate prevention
+
+Before filtering or AI calls, Jobpipe stores source identities and canonical URLs
+in SQLite. It removes known tracking parameters while preserving unknown query
+parameters that may identify a vacancy. Different sources with identical normalized
+company, title, location, and a description of at least 200 characters share one
+internal job. Missing locations and short descriptions cannot trigger content merges.
+All source references are retained and shown in job details.
+
+The longest available description is selected before scoring. Already processed
+identities are not analyzed again, and an exclusive search lock prevents simultaneous
+pipeline runs against the same data folder (Linux/macOS, including Docker).
+Activity reports merged duplicates and already processed listings.
+
+Existing jobs sharing a canonical URL are grouped without deleting records, drafts,
+feedback, or application history; the list prefers an applied record when present.
+Legacy records lack source descriptions, so retrospective cross-site content matching
+cannot be performed reliably.
+
+This release deliberately does not merge near matches, resolve redirect links over
+the network, or automatically rescore changed descriptions, CVs, or preferences.
+Similar edited reposts can still appear separately. Analysis input caching and
+a review interface for uncertain matches remain future work.

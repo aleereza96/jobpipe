@@ -23,6 +23,7 @@ import time
 import secrets
 
 import gmail_alerts
+import dedup
 import cv_source
 import sources
 from urllib.parse import parse_qs, urlsplit
@@ -54,6 +55,7 @@ def init_data():
             id TEXT PRIMARY KEY, title TEXT, company TEXT, location TEXT, url TEXT,
             score INTEGER, status TEXT, analysis TEXT, found_at TEXT,
             applied_at TEXT, follow_up_at TEXT)''')
+        dedup.init(con)
 
 
 @contextmanager
@@ -117,6 +119,8 @@ def watch(process):
     try:
         for line in process.stdout:
             with LOCK:
+                if line.startswith('DEDUP_COUNTS '):
+                    RUN['dedup'] = json.loads(line[len('DEDUP_COUNTS '):])
                 if line.startswith('SEARCH_COUNTS '):
                     RUN['counts'] = json.loads(line[len('SEARCH_COUNTS '):])
                 else:
@@ -178,7 +182,7 @@ def auth_status():
 
 
 def job_rows(query):
-    conditions, params = ["id NOT IN (SELECT job_id FROM feedback WHERE decision='dismissed')"], []
+    conditions, params = ["id NOT IN (SELECT duplicate_id FROM duplicate_links)", "id NOT IN (SELECT job_id FROM feedback WHERE decision='dismissed')"], []
     if query.get('status', [''])[0] in ('shortlisted', 'applied', 'skipped', 'low_score'):
         conditions.append('status=?'); params.append(query['status'][0])
     if query.get('due', [''])[0] == '1':
@@ -202,6 +206,9 @@ def job_rows(query):
             item['analysis'] = json.loads(item['analysis'] or '{}')
         except json.JSONDecodeError:
             item['analysis'] = {}
+        with connect() as con:
+            item['sources'] = [dict(r) for r in con.execute(
+                'SELECT source_id,url FROM job_sources WHERE job_id=?', (item['id'],))]
         result.append(item)
     return {'jobs': result, 'total': total, 'limit': limit, 'offset': offset}
 

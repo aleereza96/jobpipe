@@ -29,6 +29,7 @@ from threading import Lock
 
 from cv_source import active_markdown
 import search_rank
+import dedup
 
 ROOT = Path(os.environ.get("JOBPIPE_DATA_DIR", Path(__file__).resolve().parent))
 CONFIG_PATH = ROOT / "config.json"
@@ -263,6 +264,16 @@ def export_review(con):
 
 
 def run():
+    import fcntl
+    with open(ROOT / ".search.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("A search is already running in this data folder") from None
+        return _run_locked()
+
+
+def _run_locked():
     con = db()
     con.execute("CREATE TABLE IF NOT EXISTS candidates(id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
     cv = active_markdown(ROOT)
@@ -274,21 +285,7 @@ def run():
             print(f"  Gmail: {error}")
     jobs += gmail_alerts.postings(ROOT)
     jobs += [json.loads(row[0]) for row in con.execute("SELECT payload FROM candidates")]
-    previous = con.execute("SELECT id,url FROM jobs").fetchall()
-    seen = {row[0] for row in previous}
-    known_links = {normalized[0] for _, url in previous
-                   if (normalized := gmail_alerts.canonical(url or ""))}
-    new = []
-    for job in jobs:
-        if job["id"] in seen:
-            continue
-        normalized = gmail_alerts.canonical(job["url"] or "")
-        if normalized and normalized[0] in known_links:
-            continue
-        if normalized:
-            known_links.add(normalized[0])
-        seen.add(job["id"])
-        new.append(job)
+    new, duplicate_counts = dedup.collect(con, jobs)
     for job in new:
         con.execute("INSERT OR REPLACE INTO candidates VALUES(?,?)", (job["id"], json.dumps(job)))
     con.commit()
@@ -304,6 +301,7 @@ def run():
     ranked.sort(key=lambda candidate: candidate[0], reverse=True)
     todo = [job for _, job in ranked[:CFG["max_llm_jobs_per_run"]]]
     counts = {"found": len(jobs), "passed": len(ranked), "sent": 0, "shortlisted": 0}
+    print("DEDUP_COUNTS " + json.dumps(duplicate_counts), flush=True)
     print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
 
     def score_selected(job):

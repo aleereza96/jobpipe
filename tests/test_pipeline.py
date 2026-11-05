@@ -113,3 +113,29 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class DedupTests(unittest.TestCase):
+    def test_cross_source_identity_and_separate_locations(self):
+        import dedup
+        con = sqlite3.connect(':memory:')
+        con.execute('CREATE TABLE jobs(id TEXT PRIMARY KEY,title,company,location,url,status,found_at)')
+        job = dict(id='one', title='Engineer', company='Example', location='Berlin',
+                   url='https://example.com/jobs/1?utm_source=email', description='Python engineering requirements. ' * 15)
+        jobs, counts = dedup.collect(con, [job, dict(job, id='two', url='https://board.example/job/2'),
+                                          dict(job, id='three', location='London', url='https://board.example/job/3')])
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(counts['duplicates'], 1)
+        self.assertEqual(con.execute('SELECT count(*) FROM job_sources').fetchone()[0], 3)
+        con.execute("INSERT INTO jobs VALUES('one','Engineer','Example','Berlin',?,'applied','2026')", (job['url'],))
+        con.commit()
+        jobs, counts = dedup.collect(con, [dict(job, id='four', url='https://other.example/job/4')])
+        self.assertEqual(jobs, [])
+        self.assertEqual(counts['reused'], 1)
+
+    def test_url_identifiers_and_short_descriptions(self):
+        import dedup
+        self.assertNotEqual(dedup.canonical('https://example.com/job?id=1'),
+                            dedup.canonical('https://example.com/job?id=2'))
+        self.assertEqual(dedup.canonical('https://example.com/job?id=1&utm_source=x#top'),
+                         'https://example.com/job?id=1')
+        self.assertIsNone(dedup.fingerprint(dict(company='Example',title='Engineer',location='Berlin',description='Short')))
