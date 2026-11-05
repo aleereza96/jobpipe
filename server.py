@@ -45,6 +45,8 @@ def init_data():
         dest = DATA / name
         if not dest.exists():
             dest.write_bytes((APP / 'defaults' / name).read_bytes())
+    with connect() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS feedback(job_id TEXT PRIMARY KEY, decision TEXT NOT NULL, reason TEXT NOT NULL, updated_at TEXT NOT NULL)")
     (DATA / 'inbox').mkdir(exist_ok=True)
     (DATA / 'output').mkdir(exist_ok=True)
     with connect() as con:
@@ -74,11 +76,11 @@ def atomic_write(path, text):
 def validate_config(changes):
     cfg = json.loads((DATA / 'config.json').read_text(encoding='utf-8'))
     numeric = {'min_score': (0, 100), 'min_salary_eur': (0, 1000000),
-               'min_relevance': (0, 23), 'max_llm_jobs_per_run': (1, 200), 'workers': (1, 8),
+               'review_limit': (1, 100), 'min_relevance': (0, 23), 'max_llm_jobs_per_run': (1, 200), 'workers': (1, 8),
                'ai_timeout_seconds': (10, 1800), 'arbeitnow_pages': (1, 30)}
-    arrays = {'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords'}
+    arrays = {'required_keywords', 'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords'}
     strings = {'candidate_note', 'anthropic_model'}
-    allowed = set(numeric) | arrays | strings | {'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
+    allowed = set(numeric) | arrays | strings | {'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unrecognized settings')
     for key, value in changes.items():
@@ -92,6 +94,10 @@ def validate_config(changes):
         elif key in strings:
             if not isinstance(value, str) or len(value) > 6000:
                 raise ValueError(f'Invalid {key}')
+        elif key == 'unknown_policy' and value not in ('review', 'exclude'):
+            raise ValueError('Invalid unknown policy')
+        elif key == 'sponsorship_required' and type(value) is not bool:
+            raise ValueError('Invalid sponsorship setting')
         elif key == 'ai_provider' and value not in ('codex', 'anthropic'):
             raise ValueError('Choose Codex or Anthropic')
         elif key == 'codex_model' and value is not None and (not isinstance(value, str) or len(value) > 100):
@@ -172,7 +178,7 @@ def auth_status():
 
 
 def job_rows(query):
-    conditions, params = [], []
+    conditions, params = ["id NOT IN (SELECT job_id FROM feedback WHERE decision='dismissed')"], []
     if query.get('status', [''])[0] in ('shortlisted', 'applied', 'skipped', 'low_score'):
         conditions.append('status=?'); params.append(query['status'][0])
     if query.get('due', [''])[0] == '1':
@@ -184,9 +190,11 @@ def job_rows(query):
         params.extend(['%' + search + '%'] * 3)
     where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
     offset = max(0, min(100000, int(query.get('offset', ['0'])[0])))
+    config = json.loads((DATA / 'config.json').read_text())
+    limit = config.get('review_limit', 10) if query.get('review', ['0'])[0] == '1' else 100
     with connect() as con:
         total = con.execute('SELECT count(*) FROM jobs' + where, params).fetchone()[0]
-        rows = con.execute('SELECT id,title,company,location,url,score,status,analysis,found_at,applied_at,follow_up_at FROM jobs' + where + ' ORDER BY score DESC, found_at DESC LIMIT 100 OFFSET ?', [*params, offset]).fetchall()
+        rows = con.execute('SELECT id,title,company,location,url,score,status,analysis,found_at,applied_at,follow_up_at FROM jobs' + where + ' ORDER BY score DESC, found_at DESC LIMIT ? OFFSET ?', [*params, limit, offset]).fetchall()
     result = []
     for row in rows:
         item = dict(row)
@@ -195,7 +203,7 @@ def job_rows(query):
         except json.JSONDecodeError:
             item['analysis'] = {}
         result.append(item)
-    return {'jobs': result, 'total': total, 'offset': offset}
+    return {'jobs': result, 'total': total, 'limit': limit, 'offset': offset}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -320,6 +328,19 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(size))
             if not isinstance(body, dict): raise ValueError('Expected an object')
             path = urlsplit(self.path).path
+            if path == '/api/feedback':
+                job_id, decision, reason = body.get('id'), body.get('decision'), body.get('reason', '')
+                if not isinstance(job_id, str) or decision not in ('interested', 'dismissed', 'clear') or not isinstance(reason, str) or len(reason) > 500:
+                    raise ValueError('Invalid feedback')
+                with connect() as con:
+                    if not con.execute('SELECT 1 FROM jobs WHERE id=?', (job_id,)).fetchone():
+                        raise ValueError('Job not found')
+                    if decision == 'clear':
+                        con.execute('DELETE FROM feedback WHERE job_id=?', (job_id,))
+                    else:
+                        con.execute('INSERT OR REPLACE INTO feedback VALUES(?,?,?,?)',
+                                    (job_id, decision, reason, datetime.now().isoformat()))
+                return self.reply({'ok': True})
             if path == '/api/cv/review':
                 from cv_review import review
                 config = json.loads((DATA / 'config.json').read_text(encoding='utf-8'))

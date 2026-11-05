@@ -65,6 +65,9 @@ class ProviderTests(unittest.TestCase):
 
 class PipelineTests(unittest.TestCase):
     def setUp(self):
+        evidence_patch = patch.object(jp, 'ask_ai', return_value=json.dumps({'evidence': []}))
+        evidence_patch.start()
+        self.addCleanup(evidence_patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.job = dict(id='in-test', title='Python engineer', company='Example',
@@ -72,6 +75,17 @@ class PipelineTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_evidence_rejects_fabricated_quotes(self):
+        response = {"evidence": [
+            {"requirement": "Python", "posting_evidence": "Python", "cv_evidence": "Python", "assessment": "match"},
+            {"requirement": "Invented", "posting_evidence": "not in posting", "cv_evidence": "Python", "assessment": "match"},
+            {"requirement": "Invented CV", "posting_evidence": "Python", "cv_evidence": "invented experience", "assessment": "match"}]}
+        with patch.object(jp, 'ask', return_value=json.dumps(analysis())), \
+             patch.object(jp, 'ask_ai', return_value=json.dumps(response)):
+            result = jp.score_job('Python developer', self.job)
+        self.assertEqual(len(result['evidence']), 1)
+        self.assertEqual(result['evidence'][0]['requirement'], 'Python')
 
     def test_shortlist_draft_and_tracking(self):
         with patch.object(jp, 'OUT', self.root / 'output'), patch.object(jp, 'DB_PATH', self.root / 'jobs.db'), \

@@ -28,5 +28,9 @@
   "exclude_german_required": false,
   "min_relevance": 4,
   "include_unknown_location": true,
-  "include_relocation_outside_locations": false
+  "include_relocation_outside_locations": false,
+  "required_keywords": [],
+  "sponsorship_required": false,
+  "unknown_policy": "review",
+  "review_limit": 10
 }

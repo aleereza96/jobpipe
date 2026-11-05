@@ -208,3 +208,29 @@ your locations when a relocation phrase matches.
 jobs if too few clear the cutoff. Unscored jobs that still appear in their sources
 can compete with newer matches next time. The activity panel shows the current
 search's found, passed filters, sent to AI, and shortlisted counts.
+
+## Requirements, evidence, and focused review
+
+Preferences now include required posting terms, a sponsorship requirement, a policy
+for unknown information, and the review queue size. These start empty or disabled.
+Required terms missing from a posting remain unknown; a keyword match is only a
+text signal, not proof of eligibility. Sponsorship detection conservatively flags
+explicit refusals; other sponsorship information still needs checking.
+
+Job details separate eligibility checks from fit scores. A separate AI evidence
+request returns posting and CV quotes; only exact quotes in the supplied text
+are displayed. This verifies quotation provenance, not the interpretation.
+Evidence failure does not discard an otherwise scored job. This adds one AI call
+per scored job; the jobs-per-search limit remains a job limit, not a call limit.
+Old saved analyses remain unchanged.
+
+Interested / Not for me feedback is stored separately and can be cleared from the
+open job drawer. Dismissed jobs are hidden from job lists. Feedback does not silently
+change preferences or model weights. Automatic preference suggestions and similarity
+learning are future work.
+
+Enable Focused review queue above the opportunities list to use the size in
+Preferences. It pages through existing results in score order without inventing
+matches to fill the page. Unprocessed candidates persist in SQLite and are checked
+against current preferences on subsequent searches. Saved source text may become
+stale; expiry verification is not implemented.

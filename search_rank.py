@@ -77,3 +77,22 @@ def evaluate(job, config):
     if fit < config.get("min_relevance", 4):
         return "below local relevance cutoff", 0
     return None, (fit, int(location_match), int(visa), recency(job))
+
+
+def eligibility(job, config):
+    """Only explicit conflicts exclude; absent evidence remains unknown."""
+    text = (job.get("title", "") + "\n" + job.get("description", ""))
+    checks = []
+    for term in config.get("required_keywords", []):
+        checks.append({"requirement": term, "assessment": "match" if matches(text, [term]) else "unknown"})
+    if config.get("sponsorship_required"):
+        refusal = re.search(r"(?:cannot|can't|do not|does not|unable to|no)\s+(?:offer\s+|provide\s+)?(?:visa\s+)?sponsor(?:ship)?\b|sponsorship\s+(?:is\s+)?not available", text, re.I)
+        checks.append({"requirement": "Visa sponsorship", "assessment": "conflict" if refusal else "unknown",
+                       "posting_evidence": refusal[0] if refusal else ""})
+    if any(c["assessment"] == "conflict" for c in checks):
+        status = "excluded"
+    elif any(c["assessment"] == "unknown" for c in checks):
+        status = "needs checking"
+    else:
+        status = "eligible"
+    return {"status": status, "checks": checks}

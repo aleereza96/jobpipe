@@ -43,6 +43,20 @@ class DashboardTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw.startswith(b'{') else raw
 
+    def test_requirements_feedback_and_queue(self):
+        import search_rank
+        cfg = {'sponsorship_required': True}
+        self.assertEqual(search_rank.eligibility({'description': 'We cannot sponsor visas'}, cfg)['status'], 'excluded')
+        self.assertEqual(search_rank.eligibility({'description': 'A remote job'}, cfg)['status'], 'needs checking')
+        self.assertEqual(self.request('/api/settings', {'config': {'unknown_policy': 'invalid'}})[0], 400)
+        with server.connect() as con:
+            con.execute("INSERT INTO jobs(id,title,status,score) VALUES('feedback-test','Engineer','shortlisted',90)")
+        self.assertEqual(self.request('/api/feedback', {'id': 'feedback-test', 'decision': 'dismissed', 'reason': 'Wrong role'})[0], 200)
+        self.assertEqual(self.request('/api/jobs')[1]['total'], 0)
+        self.assertEqual(self.request('/api/feedback', {'id': 'feedback-test', 'decision': 'clear'})[0], 200)
+        self.assertEqual(self.request('/api/jobs?review=1')[1]['total'], 1)
+        self.assertEqual(self.request('/api/jobs?review=1')[1]['limit'], 10)
+
     def test_board_preview_save_and_remove(self):
         url = 'https://jobs.lever.co/example-board'
         listings = [{'title': 'Software Engineer', 'location': 'Berlin'}]
@@ -159,7 +173,7 @@ Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text(text)
         cfg = json.loads((self.root / 'config.json').read_text())
         cfg.update(codex_command=str(fake), use_arbeitnow=False, boards={'greenhouse': [], 'lever': []}, include_keywords=['python'])
         (self.root / 'config.json').write_text(json.dumps(cfg))
-        cfg.update(max_llm_jobs_per_run=1, min_relevance=4, location_keywords=['Berlin'])
+        cfg.update(max_llm_jobs_per_run=1, min_relevance=4, location_keywords=['Berlin'], visa_keywords=['visa'])
         (self.root / 'config.json').write_text(json.dumps(cfg))
         self.request('/api/inbox', {'title': 'Engineer', 'description': 'We used Python at an old project.'})
         self.request('/api/inbox', {'title': 'Python engineer in London', 'description': 'Location: London\nPython required'})
