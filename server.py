@@ -24,6 +24,7 @@ import secrets
 
 import gmail_alerts
 import dedup
+from ai_provider import validate_agents
 import cv_source
 import sources
 from urllib.parse import parse_qs, urlsplit
@@ -82,7 +83,7 @@ def validate_config(changes):
                'ai_timeout_seconds': (10, 1800), 'arbeitnow_pages': (1, 30)}
     arrays = {'required_keywords', 'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords'}
     strings = {'candidate_note', 'anthropic_model'}
-    allowed = set(numeric) | arrays | strings | {'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
+    allowed = set(numeric) | arrays | strings | {'agents', 'agent_assignments', 'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unrecognized settings')
     for key, value in changes.items():
@@ -112,6 +113,11 @@ def validate_config(changes):
             if any(not isinstance(items, list) or len(items) > 100 or any(not isinstance(x, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', x) for x in items) for items in value.values()):
                 raise ValueError('Board names may contain letters, numbers, underscores and hyphens')
     cfg.update(changes)
+    validate_agents(cfg.get('agents', []), cfg.get('agent_assignments', {}))
+    old_agents = {a['id']: a for a in json.loads((DATA / 'config.json').read_text()).get('agents', [])}
+    for agent in cfg.get('agents', []):
+        old = old_agents.get(agent['id'])
+        agent['version'] = (old['version'] + int(any(agent[k] != old[k] for k in ('name', 'instructions', 'provider', 'model')))) if old else 1
     return cfg
 
 
@@ -348,6 +354,28 @@ class Handler(BaseHTTPRequestHandler):
                         con.execute('INSERT OR REPLACE INTO feedback VALUES(?,?,?,?)',
                                     (job_id, decision, reason, datetime.now().isoformat()))
                 return self.reply({'ok': True})
+            if path == '/api/agents/test':
+                from ai_provider import ask_ai, validate_score, SCORE_SCHEMA, STAGES, agent_stamp
+                from cv_review import review
+                cfg = validate_config(body.get('config', {}))
+                stage, sample = body.get('stage'), body.get('sample')
+                if stage not in STAGES or not isinstance(sample, str) or not sample.strip() or len(sample) > 20000:
+                    raise ValueError('Choose a stage and provide up to 20000 characters of sample input.')
+                try:
+                    if stage.startswith('cv_'):
+                        action = {'cv_score': 'score', 'cv_edit': 'suggest', 'cv_natural': 'natural'}[stage]
+                        result = review(cfg, action, sample, 'md')
+                    elif stage == 'scoring':
+                        from jobpipe import SCORE_SYS
+                        result = validate_score(json.loads(ask_ai(cfg, SCORE_SYS, sample, schema=SCORE_SCHEMA, stage=stage)))
+                    else:
+                        # Preview is explanatory only; production still uses its stricter stage contract.
+                        result = {'preview': ask_ai(cfg, 'Preview this stage using the supplied sample. Use only supplied facts. '
+                            'For evidence quote exact supporting passages; for drafting write an application draft. '
+                            'Do not use tools or invent facts.', sample, stage=stage)}
+                except (RuntimeError, OSError) as exc:
+                    return self.reply({'error': str(exc)}, 502)
+                return self.reply({'result': result, 'agent': agent_stamp(cfg, stage)})
             if path == '/api/cv/review':
                 from cv_review import review
                 config = json.loads((DATA / 'config.json').read_text(encoding='utf-8'))

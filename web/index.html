@@ -7,6 +7,7 @@
 <button data-view="followups" class="nav"><span>◷</span> Follow-ups <b id="nav-due">0</b></button>
 <button data-view="inbox" class="nav"><span>⊕</span> Add a posting</button>
 <button data-view="boards" class="nav">Job sources</button>
+<button data-view="agents" class="nav">Agents</button>
 <button data-view="alerts" class="nav"><span>✉</span> Job alerts</button>
 <div class="nav-divider"></div><button data-view="cv" class="nav"><span>▤</span> My CV</button><button data-view="settings" class="nav"><span>⚙</span> Preferences</button></nav>
 <div class="sidebar-bottom"><div class="local-badge"><i></i> LOCAL WORKSPACE</div><p>Your search. Your pace.<br>You make the final move.</p><button id="connection" class="connection"><span class="avatar">C</span><span><strong>Codex connection</strong><small id="auth-label">Check in Preferences</small></span><span>↗</span></button></div></aside>
@@ -30,7 +31,17 @@
   </form>
   <div class="form-card"><h2>Saved sources</h2><ul id="boards-list"></ul></div>
 </section>
-<section id="alerts-view" class="view hidden">
+<section id="agents-view" class="view hidden">
+<div class="page-heading"><div><h1>Your AI specialists</h1><p>Save instructions and choose who handles each AI stage. Default agents keep working until you assign a replacement.</p></div><button id="save-agents" class="primary">Save agents and assignments</button></div>
+<div class="form-card"><h2>Agent library</h2><button id="agent-export" class="secondary">Export agents</button><label>Import agents and assignments · replaces this unsaved library<input id="agent-import" type="file" accept=".json,application/json"></label><label>Choose an agent<select id="agent-select"></select></label>
+<div class="form-actions"><button id="agent-new" class="secondary">New agent</button><button id="agent-duplicate" class="secondary">Duplicate</button><button id="agent-delete" class="secondary">Delete</button></div>
+<label>Name<input id="agent-name" maxlength="100"></label><label>Instructions<textarea id="agent-instructions" rows="6" maxlength="6000" placeholder="Explain the emphasis, tone, or evaluation approach you want."></textarea></label>
+<label>Provider<select id="agent-provider"><option value="inherit">Use Preferences provider</option><option value="codex">Codex</option><option value="anthropic">Anthropic</option></select></label><label>Model · blank uses provider default<input id="agent-model" maxlength="100"></label>
+<p>Instructions cannot disable Jobpipe validation or factuality rules. Agents replace existing stage calls; they do not add autonomous tools or send applications.</p></div>
+<div class="form-card"><h2>Pipeline assignments</h2><div id="agent-assignments"></div><p>Assignments apply to future calls. Existing results are unchanged.</p></div>
+<div class="form-card"><h2>Test before assigning</h2><label>Stage<select id="agent-test-stage"></select></label><label>Sample input<textarea id="agent-sample" rows="6" maxlength="20000" placeholder="For scoring, include CV and job text. For CV stages, paste a Markdown CV."></textarea></label><button id="agent-test" class="secondary">Run preview</button><p>Tests use the assignments shown here, including unsaved edits. They make an AI call and do not save jobs or CVs. Evidence and draft previews are illustrative; production validation still applies.</p><pre id="agent-test-result" style="white-space:pre-wrap"></pre></div>
+</section>
+<section id="alerts-view"  class="view hidden">
   <div class="page-heading"><div><h1>Job alerts</h1><p>Bring job alerts from Gmail into your search.</p></div></div>
   <div class="form-card">
     <h2>Gmail accounts</h2>

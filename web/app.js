@@ -15,7 +15,7 @@ function table(jobs){if(!jobs.length)return empty(state.view==='followups'?'All 
 async function loadJobs(){const request=++state.request;const followups=state.view==='followups';const params=new URLSearchParams(followups?{due:'1'}:{status:state.filter,q:state.search,offset:String(state.offset)});if(!followups&&document.querySelector('#review-queue')?.checked)params.set('review','1');const data=await api('/api/jobs?'+params);if(request!==state.request)return;state.pageSize=data.limit||100;state.jobs=data.jobs;const target=followups?'#followups-list':'#jobs-list';$(target).innerHTML=table(data.jobs);if(!followups){$('#result-count').textContent=data.total?`${data.offset+1}–${data.offset+data.jobs.length} of ${data.total} opportunities`:'No opportunities in this view';$('#prev-page').disabled=state.offset===0;$('#next-page').disabled=state.offset+state.pageSize>=data.total;}}
 async function loadStats(){const data=await api('/api/stats');$('#stat-total').textContent=data.total.toLocaleString();$('#stat-shortlisted').textContent=data.counts.shortlisted||0;$('#stat-applied').textContent=data.counts.applied||0;$('#stat-due').textContent=data.due;$('#nav-count').textContent=data.counts.shortlisted||0;$('#nav-due').textContent=data.due;}
 async function loadSettings(){const data=await api('/api/settings');state.config={required_keywords:[], sponsorship_required:false, unknown_policy:'review', review_limit:10, min_relevance:4, role_keywords:[], include_unknown_location:true, include_relocation_outside_locations:false, exclude_german_required:false, ...data.config};if(!cvDirty){$('#cv-text').value=data.cv;$('#cv-format').value=data.cv_format||'md';}const form=$('#settings-form');for(const [name,value] of Object.entries(state.config)){const input=form.elements.namedItem(name);if(!input)continue;if(input.type==='checkbox')input.checked=value;else input.value=Array.isArray(value)?value.join(', '):value??'';}form.elements.greenhouse.value=(data.config.boards?.greenhouse||[]).join(', ');form.elements.lever.value=(data.config.boards?.lever||[]).join(', ');}
-async function showView(view){if(!['jobs','followups','inbox','boards','alerts','cv','settings'].includes(view))view='jobs';state.view=view;$$('.view').forEach(el=>el.classList.add('hidden'));$('#'+view+'-view').classList.remove('hidden');$$('.nav').forEach(el=>el.classList.toggle('active',el.dataset.view===view));$('#crumb').textContent={jobs:'Opportunities',followups:'Follow-ups',inbox:'Add a posting',alerts:'Job alerts',boards:'Job sources',cv:'My CV',settings:'Preferences'}[view];history.replaceState(null,'','#'+view);if(['jobs','followups'].includes(view))await loadJobs();if(view==='boards')await loadBoards();if(view==='alerts')await loadAlerts();if(['cv','settings'].includes(view))await loadSettings();}
+async function showView(view){if(!['jobs','followups','inbox','boards','alerts','agents','cv','settings'].includes(view))view='jobs';state.view=view;$$('.view').forEach(el=>el.classList.add('hidden'));$('#'+view+'-view').classList.remove('hidden');$$('.nav').forEach(el=>el.classList.toggle('active',el.dataset.view===view));$('#crumb').textContent={jobs:'Opportunities',followups:'Follow-ups',inbox:'Add a posting',agents:'Agents',alerts:'Job alerts',boards:'Job sources',cv:'My CV',settings:'Preferences'}[view];history.replaceState(null,'','#'+view);if(['jobs','followups'].includes(view))await loadJobs();if(view==='boards')await loadBoards();if(view==='alerts')await loadAlerts();if(view==='agents')await loadAgents();if(['cv','settings'].includes(view))await loadSettings();}
 function setFilter(filter){state.filter=filter;state.offset=0;$$('.tabs button').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter));return showView('jobs');}
 function markdown(text){const container=document.createElement('div');for(const line of text.split('\n')){if(!line.trim())continue;const h=line.match(/^(#{1,3})\s+(.+)/);const p=document.createElement(h?(h[1].length===1?'h3':'h'+h[1].length):'p');if(h&&h[1].length===1)p.className='draft-title';p.textContent=h?h[2]:line;container.append(p);}return container.innerHTML;}
 async function openJob(id){const job=state.jobs.find(j=>j.id===id);if(!job)return;state.detail=job;const a=job.analysis||{};const url=safeLink(job.url);const list=(title,values)=>Array.isArray(values)&&values.length?`<h3>${title}</h3><ul>${values.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`:'';$('#job-detail').innerHTML=`<span class="score ${job.score<70?'low':''}">${escapeHTML(job.score)}<small>/100 MATCH</small></span><h1 id="detail-title">${escapeHTML(job.title)}</h1><p class="meta">${escapeHTML(job.company)} · ${escapeHTML(job.location||'Location not listed')}</p><div class="detail-actions">${url?`<a class="primary" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">Open posting ↗</a>`:''}${job.status==='shortlisted'?'<button class="secondary" id="mark-applied">Mark as applied</button>':''}${job.status==='applied'?`<span class="status applied">Applied ${escapeHTML(date(job.applied_at))} · Follow-up ${escapeHTML(date(job.follow_up_at))}</span>`:''}</div><div class="analysis-box"><h2>Why this could fit</h2><p>${escapeHTML(a.summary||a.skip||'This posting was filtered before AI scoring.')}</p>${list('Matches',a.matches)}${list('Gaps to consider',a.gaps)}${a.visa_or_relocation_signal?`<p>Visa / relocation signal: ${escapeHTML(a.visa_or_relocation_signal)}</p>`:''}</div><div class="draft-header"><h2>Your application draft</h2><button id="copy-draft" class="subtle-button hidden">Copy draft</button><button id="generate-cv-pdf" class="subtle-button hidden">Generate tailored CV PDF</button></div><div id="draft-content" class="draft loading">Loading draft…</div>`;$('#job-drawer').classList.remove('hidden');$('#drawer-backdrop').classList.remove('hidden');document.body.style.overflow='hidden';$('#close-drawer').focus();const data=await api('/api/draft?'+new URLSearchParams({id}));if(state.detail?.id!==id)return;state.draft=data.text;$('#draft-content').classList.remove('loading');$('#draft-content').innerHTML=data.text?markdown(data.text):empty('No draft for this role','Drafts are created when a job passes your match score and filters.');$('#copy-draft').classList.toggle('hidden',!data.text);$('#generate-cv-pdf').classList.toggle('hidden',!data.text);}
@@ -265,6 +265,7 @@ async function reviewCv(action) {
   try {
     const result = await api('/api/cv/review', {action, cv: cvEditor.value, format: cvFormat.value, prompt: action==='rewrite'?$('#cv-edit-prompt').value:undefined});
     if (revision !== cvRevision) return;
+    if(result.agent){const note=document.createElement('p');note.textContent='Agent: '+result.agent.name+' · version '+result.agent.version;cvResults.append(note);}
     if (action === 'score') {
       cvReviewStatus.textContent = 'CV writing score: ' + result.score + '/100';
       const feedback = document.createElement('p');
@@ -323,7 +324,7 @@ openJob = async function(id) {
  if(state.detail?.id!==id)return;
  const a=state.detail.analysis||{};
  const section=document.createElement('section');
- section.innerHTML='<h2>Eligibility and evidence</h2><p>'+escapeHTML(a.eligibility?.status||'Not assessed — run a new search')+'</p>'+
+ section.innerHTML='<p>'+escapeHTML(Object.entries(a.agents||{}).map(([stage,agent])=>stage+': '+agent.name+' v'+agent.version).join(' · '))+'</p><h2>Eligibility and evidence</h2><p>'+escapeHTML(a.eligibility?.status||'Not assessed — run a new search')+'</p>'+
  (a.eligibility?.checks||[]).map(x=>'<p>'+escapeHTML(x.requirement)+': '+escapeHTML(x.assessment)+'</p>').join('')+
  '<p>'+escapeHTML(a.evidence_status||'Evidence not available for this older analysis')+'</p>'+
  (a.evidence||[]).map(x=>'<h3>'+escapeHTML(x.requirement)+' · '+escapeHTML(x.assessment)+'</h3><p>Posting: '+escapeHTML(x.posting_evidence)+'</p><p>CV: '+escapeHTML(x.cv_evidence||'No supporting quote')+'</p>').join('');
@@ -356,4 +357,60 @@ $('#gmail-client-upload').addEventListener('change', safely(async event => {
   $('#gmail-setup-result').textContent='Google setup saved. Choose Connect Gmail to sign in.';
   await loadAlerts();
  } finally {event.target.value='';}
+}));
+
+const agentStages={scoring:'Job scoring',evidence:'Evidence review',drafting:'Application drafting',cv_score:'CV scoring',cv_edit:'CV editing and suggestions',cv_natural:'Natural wording'};
+let agentLibrary=[], agentAssignments={}, editingAgent=null;
+function captureAgent(){
+ const agent=agentLibrary.find(a=>a.id===editingAgent);if(!agent)return;
+ agent.name=$('#agent-name').value;agent.instructions=$('#agent-instructions').value;
+ agent.provider=$('#agent-provider').value;agent.model=$('#agent-model').value.trim();
+}
+function captureAssignments(){
+ for(const stage of Object.keys(agentStages)){const select=document.getElementById('assign-'+stage);if(select)agentAssignments[stage]=select.value||null;}
+}
+function renderAgent(){
+ const agent=agentLibrary.find(a=>a.id===editingAgent);
+ for(const key of ['name','instructions','provider','model']){const input=document.getElementById('agent-'+key);input.disabled=!agent;input.value=agent?.[key]||(key==='provider'?'inherit':'');}
+}
+function renderAgents(){
+ const select=$('#agent-select');select.replaceChildren();
+ for(const agent of agentLibrary){const option=document.createElement('option');option.value=agent.id;option.textContent=agent.name||'Unnamed agent';select.append(option);}
+ select.value=editingAgent||'';renderAgent();
+ const target=$('#agent-assignments');target.replaceChildren();
+ for(const [stage,name] of Object.entries(agentStages)){
+  const label=document.createElement('label');label.textContent=name;
+  const choice=document.createElement('select');choice.id='assign-'+stage;
+  const defaultOption=document.createElement('option');defaultOption.value='';defaultOption.textContent='Jobpipe default';choice.append(defaultOption);
+  for(const agent of agentLibrary){const option=document.createElement('option');option.value=agent.id;option.textContent=agent.name||'Unnamed agent';choice.append(option);}
+  choice.value=agentAssignments[stage]||'';label.append(choice);target.append(label);
+ }
+}
+async function loadAgents(){
+ const data=await api('/api/settings');agentLibrary=structuredClone(data.config.agents||[]);
+ agentAssignments={...(data.config.agent_assignments||{})};editingAgent=agentLibrary[0]?.id||null;renderAgents();
+}
+$('#agent-select').addEventListener('change',()=>{captureAgent();captureAssignments();editingAgent=$('#agent-select').value;renderAgents();});
+$('#agent-new').addEventListener('click',()=>{captureAgent();captureAssignments();const agent={id:crypto.randomUUID(),name:'New agent',instructions:'',provider:'inherit',model:'',version:1};agentLibrary.push(agent);editingAgent=agent.id;renderAgents();});
+$('#agent-duplicate').addEventListener('click',()=>{captureAgent();captureAssignments();const source=agentLibrary.find(a=>a.id===editingAgent);if(!source)return;const agent={...source,id:crypto.randomUUID(),name:source.name+' copy',version:1};agentLibrary.push(agent);editingAgent=agent.id;renderAgents();});
+$('#agent-delete').addEventListener('click',()=>{captureAssignments();agentLibrary=agentLibrary.filter(a=>a.id!==editingAgent);for(const stage of Object.keys(agentAssignments))if(agentAssignments[stage]===editingAgent)agentAssignments[stage]=null;editingAgent=agentLibrary[0]?.id||null;renderAgents();});
+$('#save-agents').addEventListener('click',safely(async()=>{captureAgent();captureAssignments();await api('/api/settings',{config:{agents:agentLibrary,agent_assignments:agentAssignments}});await loadAgents();toast('Agents and assignments saved.');}));
+for(const [stage,name] of Object.entries(agentStages)){const option=document.createElement('option');option.value=stage;option.textContent=name;$('#agent-test-stage').append(option);}
+$('#agent-test').addEventListener('click',safely(async()=>{
+ captureAgent();captureAssignments();const button=$('#agent-test');button.disabled=true;$('#agent-test-result').textContent='Running preview…';
+ try{const result=await api('/api/agents/test',{config:{agents:agentLibrary,agent_assignments:agentAssignments},stage:$('#agent-test-stage').value,sample:$('#agent-sample').value});$('#agent-test-result').textContent=JSON.stringify(result,null,2);}
+ catch(error){$('#agent-test-result').textContent=error.message;throw error;}finally{button.disabled=false;}
+}));
+
+$('#agent-export').addEventListener('click',()=>{
+ captureAgent();captureAssignments();const url=URL.createObjectURL(new Blob([JSON.stringify({agents:agentLibrary,agent_assignments:agentAssignments},null,2)],{type:'application/json'}));
+ const link=document.createElement('a');link.href=url;link.download='jobpipe-agents.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+$('#agent-import').addEventListener('change',safely(async event=>{
+ const file=event.target.files[0];if(!file)return;
+ try{if(file.size>250000)throw new Error('Agent file is too large.');const data=JSON.parse(await file.text());
+ if(!Array.isArray(data.agents)||data.agents.length>30||!data.agent_assignments||typeof data.agent_assignments!=='object'||
+ data.agents.some(a=>!a||typeof a.id!=='string'||typeof a.name!=='string'||typeof a.instructions!=='string'))throw new Error('Invalid agent file.');
+ agentLibrary=data.agents;agentAssignments=data.agent_assignments;editingAgent=agentLibrary[0]?.id||null;renderAgents();toast('Imported for review. Save to activate.');}
+ finally{event.target.value='';}
 }));

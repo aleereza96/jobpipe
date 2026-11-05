@@ -63,6 +63,22 @@ class DashboardTests(unittest.TestCase):
         with patch('cv_review.ask_ai', return_value=json.dumps(unsafe)):
             self.assertEqual(self.request('/api/cv/review', request)[1]['edits'], [])
 
+    def test_agent_library_assignments_and_preview(self):
+        agent = {'id': 'editor', 'name': 'Editor', 'instructions': 'Use concise wording.',
+                 'provider': 'inherit', 'model': '', 'version': 1}
+        cfg = {'agents': [agent], 'agent_assignments': {'cv_edit': 'editor'}}
+        self.assertEqual(self.request('/api/settings', {'config': cfg})[0], 200)
+        changed = dict(agent, instructions='Use clear wording.')
+        self.assertEqual(self.request('/api/settings', {'config': dict(cfg, agents=[changed])})[0], 200)
+        saved = self.request('/api/settings')[1]['config']
+        self.assertEqual(saved['agents'][0]['version'], 2)
+        self.assertEqual(self.request('/api/settings', {'config': {'agent_assignments': {'scoring': 'missing'}}})[0], 400)
+        with patch('cv_review.ask_ai', return_value=json.dumps({'edits': []})):
+            result = self.request('/api/agents/test', {'stage': 'cv_edit', 'sample': '# CV\nBuilt APIs.'})
+        self.assertEqual(result[0], 200)
+        self.assertEqual(result[1]['agent']['id'], 'editor')
+        self.assertEqual(self.request('/api/agents/test', {'stage': 'bad', 'sample': 'CV'})[0], 400)
+
     def test_gmail_ui_setup(self):
         self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
         client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}

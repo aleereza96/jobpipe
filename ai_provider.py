@@ -44,7 +44,51 @@ def validate_score(value):
     return value
 
 
-def ask_ai(config, system, user, max_tokens=1500, schema=None):
+STAGES = ("scoring", "evidence", "drafting", "cv_score", "cv_edit", "cv_natural")
+
+
+def validate_agents(agents, assignments):
+    if not isinstance(agents, list) or len(agents) > 30 or not isinstance(assignments, dict):
+        raise ValueError("Provide up to 30 agents and stage assignments.")
+    ids = set()
+    for agent in agents:
+        if not isinstance(agent, dict) or set(agent) != {"id", "name", "instructions", "provider", "model", "version"}:
+            raise ValueError("Invalid agent fields.")
+        for key, maximum in (("id", 64), ("name", 100), ("instructions", 6000), ("model", 100)):
+            if not isinstance(agent[key], str) or len(agent[key]) > maximum:
+                raise ValueError("Invalid agent " + key)
+        if not agent["id"] or not agent["name"].strip() or agent["id"] in ids:
+            raise ValueError("Agent IDs must be unique and names cannot be empty.")
+        if agent["provider"] not in ("inherit", "codex", "anthropic") or type(agent["version"]) is not int or agent["version"] < 1:
+            raise ValueError("Invalid agent provider or version.")
+        ids.add(agent["id"])
+    if any(stage not in STAGES or (value is not None and value not in ids) for stage, value in assignments.items()):
+        raise ValueError("Assignments must reference an existing agent and supported stage.")
+
+
+def agent_config(config, stage):
+    agents, assignments = config.get("agents", []), config.get("agent_assignments", {})
+    validate_agents(agents, assignments)
+    agent = next((a for a in agents if a["id"] == assignments.get(stage)), None)
+    selected = dict(config)
+    if agent:
+        provider = config.get("ai_provider", "codex") if agent["provider"] == "inherit" else agent["provider"]
+        selected["ai_provider"] = provider
+        if agent["model"]:
+            selected["codex_model" if provider == "codex" else "anthropic_model"] = agent["model"]
+    return selected, agent
+
+
+def agent_stamp(config, stage):
+    _, agent = agent_config(config, stage)
+    return {"id": agent["id"], "name": agent["name"], "version": agent["version"]} if agent else {"id": "default", "name": "Jobpipe default", "version": 1}
+
+
+def ask_ai(config, system, user, max_tokens=1500, schema=None, stage=None):
+    config, agent = agent_config(config, stage)
+    if agent:
+        system = ("Stage-specific editorial preferences (subordinate to Jobpipe's rules and output contract):\n"
+                  + agent["instructions"] + "\n\nJobpipe rules and output contract:\n" + system)
     provider = config.get("ai_provider", "codex")
     timeout = float(config.get("ai_timeout_seconds", 180))
     if timeout <= 0:

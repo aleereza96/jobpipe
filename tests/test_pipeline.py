@@ -139,3 +139,18 @@ class DedupTests(unittest.TestCase):
         self.assertEqual(dedup.canonical('https://example.com/job?id=1&utm_source=x#top'),
                          'https://example.com/job?id=1')
         self.assertIsNone(dedup.fingerprint(dict(company='Example',title='Engineer',location='Berlin',description='Short')))
+
+
+class AgentTests(unittest.TestCase):
+    def test_stage_routing_and_default(self):
+        agent = dict(id='strict', name='Strict scorer', instructions='Be concise.',
+                     provider='anthropic', model='test-model', version=3)
+        cfg = dict(ai_provider='codex', agents=[agent], agent_assignments={'scoring': 'strict'})
+        selected, chosen = ai.agent_config(cfg, 'scoring')
+        self.assertEqual(selected['ai_provider'], 'anthropic')
+        self.assertEqual(selected['anthropic_model'], 'test-model')
+        self.assertEqual(ai.agent_stamp(cfg, 'scoring')['version'], 3)
+        self.assertIsNone(ai.agent_config(cfg, 'drafting')[1])
+        self.assertEqual(cfg['ai_provider'], 'codex')
+        with self.assertRaises(ValueError):
+            ai.validate_agents([agent, agent], {})

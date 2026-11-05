@@ -110,6 +110,42 @@ matches to fill a quota.
 Feedback is stored separately from application status. It does not yet train a
 model, adjust ranking, or silently change your preferences.
 
+## Custom agents
+
+Open **Agents** to create a saved AI specialist with a name, instructions, provider,
+and optional model. Duplicate an existing agent to try another approach.
+Under **Pipeline assignments**, select a specialist or the Jobpipe default for:
+
+- Job scoring
+- Evidence review
+- Application drafting
+- CV scoring
+- CV editing (suggestions and prompted revisions)
+- Natural wording
+
+Save the library and assignments to activate them. An agent replaces the existing
+call at its stage; assigning one does not add a new pipeline step. Custom provider
+choices still require that provider's credentials. A blank model uses the selected
+provider's configured default. Agents cannot configure commands or API endpoints.
+
+Use **Test before assigning** with sample input to preview the assignments shown,
+including unsaved edits. This makes an AI call without saving a job or CV.
+Scoring and CV previews use their normal response validators; evidence and drafting
+previews are illustrative, while production retains its existing contracts.
+
+Export/import JSON to move agent definitions between installations. Import replaces
+the unsaved library for review; save to activate. Exports include instructions, so
+check for personal information before sharing. Never put credentials in instructions.
+
+Saving changes to an agent increments its version. New job analyses, drafts, and
+CV review responses identify the agent/version used; old outputs remain unchanged.
+Deleting an agent in the UI clears its assignments back to defaults.
+
+These are saved instruction/model profiles, not external framework executables.
+Jobpipe retains factuality instructions, score validation, exact-quote checks, and
+manual application/CV saving. Model compliance still requires user review. Source
+collection, deduplication, and database updates remain ordinary code.
+
 ## Supported sources
 
 | Source | Connection |
