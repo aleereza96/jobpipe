@@ -43,6 +43,26 @@ class DashboardTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw.startswith(b'{') else raw
 
+    def test_prompted_cv_edits_and_natural_wording(self):
+        source = '# Experience\nBuilt APIs.'
+        response = {'edits': [{'before': 'Built APIs.', 'after': 'Built Python APIs.', 'reason': 'Uses supplied detail'}]}
+        request = {'cv': source, 'format': 'md', 'action': 'rewrite', 'prompt': 'Add this fact: the APIs used Python.'}
+        original = (self.root / 'cv.md').read_text()
+        with patch('cv_review.ask_ai', return_value=json.dumps(response)) as ai:
+            result = self.request('/api/cv/review', request)
+            self.assertEqual(result[0], 200)
+            self.assertEqual(len(result[1]['edits']), 1)
+            self.assertIn('APIs used Python', ai.call_args.args[2])
+        self.assertEqual((self.root / 'cv.md').read_text(), original)
+        self.assertEqual(self.request('/api/cv/review', dict(request, prompt=''))[0], 400)
+        with patch('cv_review.ask_ai', return_value=json.dumps(response)) as ai:
+            self.assertEqual(self.request('/api/cv/review', dict(request, action='natural'))[0], 200)
+            self.assertIn('natural', ai.call_args.args[1])
+            self.assertNotIn('APIs used Python', ai.call_args.args[2])
+        unsafe = {'edits': [{'before': 'Not in CV', 'after': 'Invented', 'reason': 'Bad anchor'}]}
+        with patch('cv_review.ask_ai', return_value=json.dumps(unsafe)):
+            self.assertEqual(self.request('/api/cv/review', request)[1]['edits'], [])
+
     def test_gmail_ui_setup(self):
         self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
         client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}

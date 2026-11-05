@@ -71,6 +71,11 @@
 <button id="suggest-cv" class="secondary" type="button">Suggest improvements</button></div>
 <small>Review uses your configured AI provider.</small>
 </div>
+<label for="cv-edit-prompt">Ask AI to update your CV</label>
+<textarea id="cv-edit-prompt" rows="4" maxlength="6000" placeholder="For example: Rewrite my latest experience to emphasize backend work. Add this fact: I built our internal reporting API using Python."></textarea>
+<p>Provide real details to add or correct. AI proposes individual edits for you to review; nothing is saved automatically. LaTeX edits are limited to plain prose so formatting stays intact.</p>
+<div class="form-actions"><button id="rewrite-cv" class="secondary" type="button">Propose requested changes</button><button id="natural-cv" class="secondary" type="button">Make wording more natural</button></div>
+<small>Natural wording improves clarity and tone; it does not guarantee passing AI detectors.</small>
 <p id="cv-review-status" role="status"></p>
 <div id="cv-review-results"></div>
 <small>Save to use your edits in future searches. Job PDFs use the Jobpipe layout.</small></div></section>

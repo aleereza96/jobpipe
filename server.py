@@ -352,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                 from cv_review import review
                 config = json.loads((DATA / 'config.json').read_text(encoding='utf-8'))
                 try:
-                    result = review(config, body.get('action'), body.get('cv'), body.get('format'))
+                    result = review(config, body.get('action'), body.get('cv'), body.get('format'), body.get('prompt'))
                 except (RuntimeError, OSError) as exc:
                     return self.reply({'error': str(exc)}, 502)
                 return self.reply(result)

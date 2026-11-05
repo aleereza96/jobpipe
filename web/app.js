@@ -256,13 +256,14 @@ $('#save-cv').addEventListener('click', safely(async () => {
 }));
 
 async function reviewCv(action) {
+  if(action==='rewrite'&&!$('#cv-edit-prompt').value.trim())throw new Error('Describe the changes you want first.');
   const revision = cvRevision;
-  const buttons = [$('#score-cv'), $('#suggest-cv')];
+  const buttons = [$('#score-cv'), $('#suggest-cv'), $('#rewrite-cv'), $('#natural-cv')];
   buttons.forEach(button => {button.disabled = true;});
   cvResults.replaceChildren();
   cvReviewStatus.textContent = action === 'score' ? 'Scoring CV…' : 'Looking for improvements…';
   try {
-    const result = await api('/api/cv/review', {action, cv: cvEditor.value, format: cvFormat.value});
+    const result = await api('/api/cv/review', {action, cv: cvEditor.value, format: cvFormat.value, prompt: action==='rewrite'?$('#cv-edit-prompt').value:undefined});
     if (revision !== cvRevision) return;
     if (action === 'score') {
       cvReviewStatus.textContent = 'CV writing score: ' + result.score + '/100';
@@ -307,6 +308,8 @@ async function reviewCv(action) {
 
 $('#score-cv').addEventListener('click', safely(() => reviewCv('score')));
 $('#suggest-cv').addEventListener('click', safely(() => reviewCv('suggest')));
+$('#rewrite-cv').addEventListener('click', safely(() => reviewCv('rewrite')));
+$('#natural-cv').addEventListener('click', safely(() => reviewCv('natural')));
 
 $('#settings-form').addEventListener('submit',e=>e.preventDefault());
 $('#save-settings').addEventListener('click',safely(async()=>{const f=$('#settings-form');if(!f.reportValidity())return;const changes={};for(const key of ['review_limit','min_score','min_salary_eur','min_relevance','max_llm_jobs_per_run','workers','ai_timeout_seconds','arbeitnow_pages'])changes[key]=Number(f.elements[key].value);const csv=key=>f.elements[key].value.split(',').map(x=>x.trim()).filter(Boolean);for(const key of ['required_keywords','include_keywords','exclude_keywords','location_keywords','role_keywords','visa_keywords'])changes[key]=csv(key);for(const key of ['unknown_policy','candidate_note','anthropic_model','ai_provider'])changes[key]=f.elements[key].value;changes.codex_model=f.elements.codex_model.value.trim()||null;for(const key of ['sponsorship_required','use_arbeitnow','include_unknown_location','include_relocation_outside_locations','exclude_german_required'])changes[key]=f.elements[key].checked;changes.boards={greenhouse:csv('greenhouse'),lever:csv('lever')};await api('/api/settings',{config:changes});toast('Preferences saved for your next search.');}));

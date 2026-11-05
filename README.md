@@ -276,6 +276,31 @@ Check the editor before saving.
 review the resulting text, then save to use it for future searches. Application
 drafts are instructed to use CV facts, but you should still verify every claim.
 
+### Prompted edits and natural wording
+
+In **My CV**, enter an editing request under **Ask AI to update your CV**, then
+choose **Propose requested changes**. Include the real details you want added,
+the experience to change, and the role or tone you want to emphasize. For example:
+“Emphasize backend work in my latest role. Add this fact: I built the internal
+reporting API using Python.”
+
+Jobpipe proposes up to five anchored prose edits. Review each before/after pair,
+choose **Apply edit**, and **Save CV** when satisfied. Requests use the current
+editor contents and your configured AI provider. They do not save automatically
+or update old job analyses and drafts. If you change the CV during generation,
+the stale response is discarded.
+
+**Make wording more natural** removes stiff phrasing and generic buzzwords while
+preserving facts. This is a writing aid, not a promise to bypass AI detection.
+New facts must come from your CV or your explicit editing request; verify the
+result because model instructions cannot guarantee factual accuracy.
+
+LaTeX uses the same conservative plain-prose editing rules as other CV suggestions.
+Commands and special characters cannot be edited through this tool. New details
+must fit an existing prose anchor; creating entire sections or restructuring a
+template may require manual editing. Empty suggestions mean no safe edit passed
+validation, rather than a successful rewrite.
+
 PDFs are generated only when requested for a job with a saved draft. They use
 Jobpipe's standard layout rather than compiling the uploaded LaTeX template.
 
