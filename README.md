@@ -41,6 +41,7 @@ not a larger number of collected jobs or a higher AI score.
 | PDF export | Generate a tailored CV PDF for a job when you click the button |
 | Tracking | Mark jobs applied, view seven-day follow-ups, and export a CSV |
 | Feedback | Mark Interested or Not for me, with an optional dismissal reason |
+| Custom agents | Create, test, and assign AI specialists to scoring, evidence, drafting, and CV stages |
 | Efficiency | Filter and rank locally, merge exact duplicates, cap AI work, and save deferred candidates |
 
 ## How decisions work
@@ -111,6 +112,27 @@ Feedback is stored separately from application status. It does not yet train a
 model, adjust ranking, or silently change your preferences.
 
 ## Custom agents
+
+To set up your first specialist:
+
+1. Open **Agents** and click **New agent**.
+2. Give it a name and describe the emphasis or writing style you want.
+3. Keep **Use Preferences provider**, or choose Codex or Anthropic. Optionally set a model.
+4. Select the agent for the desired stage under **Pipeline assignments**.
+5. Choose that stage in **Test before assigning**, paste representative sample input,
+   and click **Run preview**. For scoring, include both CV and posting text; for
+   CV stages, provide a Markdown CV.
+6. Review the preview, adjust the instructions if needed, then click
+   **Save agents and assignments**.
+
+For example, a drafting specialist might say:
+“Write concise, direct applications. Emphasize relevant technical work supported
+by my CV. Avoid generic praise and do not exaggerate my responsibilities.”
+
+One agent can serve several stages, or you can assign a different specialist to
+each. Choose **Jobpipe default** to stop using a custom specialist for a stage.
+Preview calls use provider allowance just like other AI calls.
+
 
 Open **Agents** to create a saved AI specialist with a name, instructions, provider,
 and optional model. Duplicate an existing agent to try another approach.
