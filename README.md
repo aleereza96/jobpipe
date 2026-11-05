@@ -1,100 +1,213 @@
 # Jobpipe · Your next move
 
-A local dashboard for your job search: collect postings, match them to your CV,
-review application drafts, and track applications and follow-ups. Nothing is
-submitted automatically.
+**A personal job-search workspace that turns scattered postings into a manageable shortlist.**
 
-## Start with Docker
+Job hunting involves more than finding links: you need to decide which roles are
+worth pursuing, adapt your application, and remember what happens next. Jobpipe
+brings those steps together in a local dashboard, using your CV and your own
+preferences to guide the search.
 
-Start Docker Desktop first. In this folder, run:
+Jobpipe is an open-source MVP for individual job seekers. Its goal is to reduce
+repeated review and application preparation, while keeping you in charge of the
+decision. It does not submit applications or guarantee interviews.
+
+[Getting started](#getting-started) · [Features](#features) ·
+[How decisions work](#how-decisions-work) · [Gmail setup](#connect-gmail-without-terminal-commands) ·
+[Technical overview](#technical-overview) · [License](#license)
+
+## Who it is for
+
+Jobpipe is useful when you collect opportunities from several places and want one
+workspace to assess them against your experience. You bring your CV, search
+criteria, and job sources; Jobpipe helps organize and prepare the opportunities.
+
+It is a personal assistant, rather than a recruitment marketplace or a shared
+applicant-tracking system. There is no hosted service, recruiter network, paid
+Jobpipe subscription, or multi-user account system included. AI providers and
+other services may have their own costs and account requirements.
+
+The useful measure of success is more worthwhile applications and interviews,
+not a larger number of collected jobs or a higher AI score.
+
+## Features
+
+| Area | What you can do |
+| --- | --- |
+| Discovery | Collect company-board jobs, import supported Gmail job alerts, or paste a posting manually |
+| Preferences | Set roles, skills, exclusions, locations, salary floor, sponsorship requirements, and AI limits |
+| Review | Browse scored opportunities, inspect gaps and evidence, and use a focused review queue |
+| CV workspace | Upload Markdown or self-contained LaTeX, edit and save it, optionally score it or request improvements |
+| Applications | Review tailored summaries, suggested CV bullets, cover letters, and LinkedIn notes |
+| PDF export | Generate a tailored CV PDF for a job when you click the button |
+| Tracking | Mark jobs applied, view seven-day follow-ups, and export a CSV |
+| Feedback | Mark Interested or Not for me, with an optional dismissal reason |
+| Efficiency | Filter and rank locally, merge exact duplicates, cap AI work, and save deferred candidates |
+
+## How decisions work
+
+A search follows this sequence:
+
+1. **Collect:** gather postings from enabled sources and saved candidates.
+2. **Identify duplicates:** compare source IDs, normalized URLs, and sufficiently
+   detailed identical content before spending AI tokens.
+3. **Screen locally:** apply the preferences you saved. Job-title phrases restrict
+   titles when provided; excluded terms and location rules can remove listings.
+4. **Rank locally:** prioritize preferred skills in titles and requirements over
+   passing mentions in the description. Location matches, relocation signals,
+   and posting dates break ties.
+5. **Analyze within your limit:** send the highest-ranked eligible candidates
+   to the chosen AI provider for fit scoring and evidence extraction.
+6. **Prepare and review:** qualifying jobs receive application drafts. You decide
+   whether to pursue them, generate a PDF, and apply yourself.
+
+The repository starts with empty personal search terms. Set your preferences
+before searching; generic defaults cannot know what a good job means for you.
+
+### Fit, requirements, and uncertainty
+
+A fit score is an AI assessment of the posting against your CV, not a probability
+of getting hired. Eligibility is shown separately.
+
+Required terms found in a posting are text signals. Missing terms remain unknown.
+The sponsorship check detects explicit refusal language; it does not confirm
+sponsorship simply because a posting mentions visas. You choose whether unknown
+requirement information stays available for checking or is excluded.
+
+Some preferences remain direct filters. For example, title phrases and location
+rules can exclude a role before AI analysis. The salary check uses a stated annual
+gross EUR maximum; it does not convert currencies or infer an unstated salary.
+
+Job details can show exact posting and CV quotes returned by the evidence step.
+Jobpipe checks that those quotes occur in the supplied text. This verifies their
+origin, not whether the AI interpreted them correctly. Review important claims.
+
+### Duplicate prevention and token efficiency
+
+Different sources can point to one internal job. Jobpipe merges matching source
+identities and canonical URLs, and exact normalized company/title/location/
+description copies when the description has at least 200 characters. Missing
+locations and short descriptions cannot trigger content merges.
+
+Source references are retained. The longest available description is selected
+before scoring. Already processed identities are skipped, while unprocessed
+candidates persist for a later search and are checked against current preferences.
+
+Existing exact-URL duplicates are hidden from the job list without deleting
+history or drafts; applied records take precedence. Older records lack full
+descriptions, so historical cross-site content matching is limited.
+
+Similar-but-edited postings may remain separate. Automatic rescoring after changes
+to a posting, CV, or preferences is not implemented. Saved analyses and drafts
+continue to reflect their original inputs.
+
+### Review and feedback
+
+Enable **Focused review queue** to page through results using the size set in
+Preferences. It shows available results in score order and does not manufacture
+matches to fill a quota.
+
+**Not for me** hides a job from lists; **Clear feedback** reverses that decision.
+Feedback is stored separately from application status. It does not yet train a
+model, adjust ranking, or silently change your preferences.
+
+## Supported sources
+
+| Source | Connection |
+| --- | --- |
+| Arbeitnow | Built-in collection, enabled in Preferences |
+| Greenhouse company boards | Add a public company board URL in Job sources |
+| Lever company boards | Add a public company board URL, including EU boards |
+| LinkedIn, Glassdoor, Indeed, StepStone | Supported job-alert emails through Gmail |
+| XING, WeAreDevelopers, and other sites | Paste the full description and original link in Add a posting |
+
+Supported board URL formats include:
+
+- `https://job-boards.greenhouse.io/company-slug`
+- `https://boards.greenhouse.io/company-slug`
+- `https://jobs.lever.co/company-slug`
+- `https://jobs.eu.lever.co/company-slug`
+
+Use **Preview listings**, then **Save source**. A general job-search website URL
+is not an automatic connector. For manual entries, provide the description as
+well as the link so the AI has text to evaluate.
+
+## Getting started
+
+### Choose your environment
+
+| Environment | Setup path |
+| --- | --- |
+| macOS | Docker Desktop, or native Python and Node.js |
+| Windows | Docker Desktop with Linux containers; WSL 2 is the recommended development alternative |
+| Linux desktop | Docker Engine with the Compose plugin, or native Python and Node.js |
+| Remote Linux machine | Docker with an SSH tunnel; keep the dashboard private |
+
+The search lock currently uses a Unix facility. Run on Windows through Docker
+or WSL 2, rather than native Windows Python.
+
+### Docker setup
+
+Install [Docker Desktop](https://docs.docker.com/desktop/) on macOS or Windows.
+For Linux, install [Docker Engine](https://docs.docker.com/engine/install/) and the
+[Compose plugin](https://docs.docker.com/compose/install/linux/).
+For Windows-specific requirements, see [Docker's Windows guide](https://docs.docker.com/desktop/setup/install/windows-install/).
+
+Download the repository, or clone it if you have access:
 
 ```sh
+git clone https://github.com/aleereza96/jobpipe.git
+cd jobpipe
 docker compose up --build -d
 ```
 
-Open **http://localhost:8787**. The first build downloads Node, Python dependencies,
-and the official Codex CLI. It needs access to Docker Hub, Debian, PyPI and npm.
+Start Docker Desktop before running Compose. The initial build needs internet
+access to download Node, Python dependencies, and the Codex CLI.
 
-Connect your ChatGPT account from a terminal in this folder:
+Open [localhost:8787](http://localhost:8787).
+
+### Connect an AI provider
+
+**Codex is the default.** From the project folder, run:
 
 ```sh
 docker compose exec jobpipe codex login --device-auth
 ```
 
-Open the URL shown in the terminal, sign in, and enter its one-time code. Device
-code login may need enabling in your ChatGPT security settings or by your workspace
-admin. Then open **Preferences → Check connection** in the dashboard.
+Follow the sign-in instructions, then use **Preferences → Check connection**.
+Device login availability depends on your account and workspace settings. Login
+is saved in the separate `codex_home` Docker volume.
 
-Your sign-in is stored separately in the `codex_home` Docker volume, using Codex's
-file credential store. It survives container restarts. Do not share that volume.
-Official sign-in instructions: https://learn.chatgpt.com/docs/auth#login-on-headless-devices
-
-Before your first search, add your CV in **My CV** and set your roles, skills, locations, and sources in **Preferences**. Then choose
-**Find opportunities**. Activity appears below the current page; you can browse
-while the pipeline runs. The existing prefilters, sources, scoring and drafting
-workflow are preserved. A second search retries jobs whose scoring or drafting failed.
-
-## What the dashboard includes
-
-- Opportunities with match score, status, search, pagination and live CSV export.
-- Job details, strengths, gaps, original posting link and application drafts.
-- Copy drafts and mark shortlisted jobs applied (sets a seven-day follow-up).
-- Follow-ups due for applied jobs.
-- A form for pasting postings from any job board into the manual inbox.
-- A CV editor and preferences for sources, keywords, salary, scoring and AI limits.
-- Search activity with start/stop controls. Completed jobs stay saved after stopping.
-- Codex connection checks and sign-in guidance.
-
-Jobpipe never sends your applications. Read every draft, verify its claims, and apply
-yourself. CV and posting text are sent to the selected AI provider during a search.
-
-## Your data stays in this folder
-
-Docker bind-mounts this folder at `/data`. Existing `jobs.db`, `config.json`, `cv.md`,
-`inbox/` and `output/` are used directly and preserved across restarts and rebuilds.
-Personal files and secrets are excluded from the Docker build context and image.
-Do not run the command-line pipeline alongside a dashboard search.
-
-If upgrading an existing installation, replace only the application files. Keep
-your `jobs.db`, `config.json`, `cv.md`, `inbox/` and `output/` intact. The repository ships with blank search preferences and a generic CV template. Your saved preferences, CV, database, OAuth files, inbox, and drafts are ignored by Git.
-
-To back up, stop the app and copy this folder. Store the Codex auth volume separately
-only if needed; you can always sign in again instead.
+**Anthropic is optional.** Copy `.env.example` to `.env`, set
+`ANTHROPIC_API_KEY`, then recreate the container:
 
 ```sh
-docker compose stop              # pause; keep data and sign-in
-docker compose start             # resume
-docker compose logs -f jobpipe   # server diagnostics
-docker compose down             # remove container; keep data and sign-in volume
+docker compose up -d --force-recreate
 ```
 
-Do not use `docker compose down -v` unless you intend to remove the saved Codex login.
+Choose Anthropic and a model available to your account in Preferences. The SDK
+is included in the Docker image. Keys are not entered into the dashboard.
 
-The dashboard is bound to your computer's loopback address. It has no shared-user
-login and is intended for local personal use. The server checks Host and Origin
-and requires same-origin JSON requests for changes. Do not expose it publicly.
+AI access is separate from Jobpipe's MIT license. Provider availability, usage
+limits, and charges depend on your account.
 
-## Optional configuration
+### Your first search
 
-Copy `.env.example` to `.env` only if you need overrides. For example, to change the
-browser port, set `JOBPIPE_PORT=8788`, then restart with `docker compose up -d`.
-`TZ` defaults to UTC for follow-up dates inside Docker. Set it to your time zone in `.env` if you prefer.
+1. Open **My CV**, upload a UTF-8 `.md` or `.tex` file, review it, and save.
+2. Set your roles, skills, locations, requirements, and exclusions in **Preferences**.
+3. Set **Jobs per search** to a small trial budget, such as 10.
+4. Add company boards or connect Gmail if desired.
+5. Choose **Find opportunities** and review Activity.
+6. Inspect promising jobs, verify their requirements, and review the drafts.
+7. Generate a PDF if useful, apply on the original website, and mark the job applied.
 
-Codex is the default provider. It uses saved CLI login and your account's Codex
-allowance. Setting a model in Preferences overrides the CLI default. Each shortlisted
-job needs two AI calls (scoring and drafting); the jobs-per-search limit is not a call
-or token limit. One parallel worker is the default. Timeouts apply per AI call.
+The job limit is not a token or AI-call limit. A successful analyzed job normally
+uses scoring and evidence calls; a qualifying job also uses a drafting call.
+Optional CV reviews make additional calls. Evidence failure does not discard an
+otherwise scored job. Stop controls preserve completed results.
 
-To use Anthropic instead, set `ANTHROPIC_API_KEY` in `.env`, recreate the container,
-then choose Anthropic and an accessible model in Preferences. Its SDK is included
-in the image. Environment keys are never returned by the dashboard.
+### Native setup on macOS, Linux, or WSL 2
 
-For reproducible builds, set `CODEX_VERSION` to your chosen npm package version in
-`.env` before building. The default installs the latest CLI available at build time.
-
-## Run without Docker
-
-Python 3.10+ and Codex CLI are required for the Codex provider:
+Install Python 3.10+ and a supported Node.js/npm environment. Then, from the project folder:
 
 ```sh
 python3 -m venv .venv
@@ -105,38 +218,150 @@ codex login
 python server.py
 ```
 
-On Windows use `.venv\Scripts\activate`. Anthropic is optional outside Docker:
-`python -m pip install anthropic`. The server defaults to `127.0.0.1:8787`.
-Set `JOBPIPE_DATA_DIR` to use a different local data directory. Missing CV/config
-files are initialized from generic templates; existing files are never replaced.
+Open [localhost:8787](http://localhost:8787). For native Anthropic usage, also
+install `anthropic` and export `ANTHROPIC_API_KEY` in the shell before starting.
+Native execution does not automatically load a `.env` file; Compose uses that file.
 
-If Python fails before startup with a locale encoding error, try:
+The server creates missing CV/config files from templates. Set `JOBPIPE_DATA_DIR`
+to an existing writable directory if you want data outside the source folder.
 
-```sh
-export LC_ALL=en_US.UTF-8
-export LANG=en_US.UTF-8
-export PYTHONUTF8=1
-python3 server.py
-```
+### Remote Linux setup
 
-Docker sets `C.UTF-8` and `PYTHONUTF8=1` already.
-
-## Existing command-line tools
+Start the Docker deployment on the remote host using the same Compose file.
+From your own computer, forward its local dashboard port:
 
 ```sh
-python jobpipe.py run
-python jobpipe.py list
-python jobpipe.py applied <id>
-python jobpipe.py followups
-python jobpipe.py boards
-python jobpipe.py alerts
+ssh -L 8787:127.0.0.1:8787 your-user@your-server
 ```
 
-Inside Docker, prepend `docker compose exec jobpipe` to each command. Email-alert
-collection remains a command-line feature. It requires `GMAIL_ADDRESS` and
-`GMAIL_APP_PASSWORD` in `.env`; output goes to `output/alerts.md`.
+Keep the SSH session open and browse to `http://localhost:8787`. The dashboard has
+no multi-user authentication and is intended for local access. Do not publish its
+port to the internet. Remote OAuth setup can require additional configuration;
+local desktop deployment is the simplest path for Gmail.
 
-## Verification
+## Connect Gmail without terminal commands
+
+Once Jobpipe is running, Gmail setup and imports happen through the browser:
+
+1. Open **Job alerts → Set up Google connection · no terminal needed**.
+2. Follow the link to Google Cloud Console. Create/select a project, enable the
+   Gmail API, and configure Google Auth Platform branding and audience.
+3. If the Google app is in Testing, add the Gmail accounts as test users.
+4. Create an OAuth client of type **Desktop app**, then download its JSON.
+5. Upload it using **Google Desktop app JSON**. No renaming or manual file move is needed.
+6. Click **Connect Gmail**, sign in on Google's page, and approve read-only access.
+   Repeat for additional accounts.
+7. Choose **Import alerts**, or start a search.
+
+If the app configuration is already saved, start at **Connect Gmail**.
+Google's one-time setup still happens on Google's website; see its
+[Gmail API setup guide](https://developers.google.com/workspace/gmail/api/quickstart/python).
+Testing grants may expire after seven days and require reconnection.
+
+The importer checks the last 14 days of supported alerts. A single listing with a
+sufficiently detailed, explicitly labeled description can enter the search.
+For link-only alerts, open the posting and paste its description into the alert row.
+
+To replace the Google client configuration, disconnect existing accounts first.
+Disconnect removes the local grant but keeps imported leads. Revoke access through
+your Google Account if you also want to remove the grant at Google.
+
+## CVs and application drafts
+
+Markdown and common self-contained LaTeX CVs are supported. LaTeX is converted
+to text without compiling it; custom macros and templates may extract imperfectly.
+Check the editor before saving.
+
+**Score CV** and **Suggest improvements** are optional. Apply individual suggestions,
+review the resulting text, then save to use it for future searches. Application
+drafts are instructed to use CV facts, but you should still verify every claim.
+
+PDFs are generated only when requested for a job with a saved draft. They use
+Jobpipe's standard layout rather than compiling the uploaded LaTeX template.
+
+## Data, privacy, and everyday operation
+
+Jobpipe runs locally, but AI analysis is not offline: CV text, job descriptions,
+and relevant candidate context are sent to your selected provider. Gmail read-only
+permission can read mailbox contents; the importer limits its searches to
+supported job-alert senders.
+
+| Local item | Purpose |
+| --- | --- |
+| `config.json` | Your saved preferences |
+| `cv-source.json` / legacy `cv.md` | Your saved CV |
+| `jobs.db` | Jobs, feedback, source identities, and deferred candidates |
+| `inbox/` | Manually added postings |
+| `output/` | Drafts and exports |
+| `gmail-client.json`, `.gmail/` | Google app configuration, account grants, and imported alerts |
+| Docker `codex_home` volume | Saved Codex sign-in |
+
+These personal files are excluded from Git and the image build context. OAuth
+files remain local; they are not encrypted by Jobpipe. Protect your computer and
+backups accordingly.
+
+Docker mounts the project folder as `/data`. To back up, stop Jobpipe and copy
+the folder including hidden data files. Treat the Codex volume separately; signing
+in again is an alternative to backing it up.
+
+```sh
+docker compose stop
+docker compose start
+docker compose logs -f jobpipe
+docker compose down
+```
+
+These commands preserve the data folder. Avoid `docker compose down -v` unless
+you intend to delete the saved Codex login volume.
+
+For updates, back up first, pull the source changes, and rebuild:
+
+```sh
+git pull --ff-only
+docker compose up --build -d
+```
+
+Keep personal files when replacing application files. Existing data is not a
+disposable example database.
+
+### Configuration and troubleshooting
+
+Copy `.env.example` to `.env` for Docker overrides. `JOBPIPE_PORT` changes the
+host port; `TZ` changes the container time zone (default UTC). Set `CODEX_VERSION`
+to pin the CLI package version for builds.
+
+| Problem | What to check |
+| --- | --- |
+| Docker cannot connect | Start Docker Desktop or the Docker service |
+| Port 8787 is occupied | Set another `JOBPIPE_PORT` in `.env` and recreate the container |
+| No useful results | Review sources, title/skill terms, location filters, and relevance cutoff |
+| AI search fails | Check provider login, model access, limits, timeout, and Activity |
+| Gmail connection fails | Check Desktop client type, enabled Gmail API, test users, and grant expiry |
+| A job looks duplicated | Edited descriptions or different URLs may evade conservative matching |
+| CV edits do not change old scores | Automatic reassessment is not implemented |
+| Python fails during locale startup | Use a valid UTF-8 locale; Docker already sets `C.UTF-8` |
+
+## Technical overview
+
+Jobpipe uses a Python HTTP server, a plain HTML/CSS/JavaScript dashboard, and
+SQLite for persistent state. Docker packages the runtime and provider tooling.
+There is no separate database service or frontend build step.
+
+| Component | Responsibility |
+| --- | --- |
+| `server.py`, `web/` | Dashboard, API routes, and search controls |
+| `jobpipe.py` | Collection, screening, scoring, drafting, and tracking |
+| `sources.py`, `gmail_alerts.py` | Company-board and email-alert imports |
+| `search_rank.py`, `dedup.py` | Local relevance, requirement checks, and identity matching |
+| `ai_provider.py` | Codex and Anthropic adapters and score validation |
+| `cv_source.py`, `cv_review.py`, `cv_pdf.py` | CV import, optional review, and PDF generation |
+
+The API checks local Host/Origin values for dashboard requests. AI input is treated
+as data; output is validated before use. An exclusive file lock prevents parallel
+searches against one data folder. These measures support a local personal app;
+they do not make it a public multi-user service.
+
+For contributors, run the existing checks in an environment with dependencies installed:
 
 ```sh
 python -m unittest discover -s tests -v
@@ -144,137 +369,31 @@ node --check web/app.js
 docker compose config --quiet
 ```
 
-The tests cover provider adapters, application drafting and tracking, dashboard
-requests, and a search using a simulated Codex executable. They do not make
-live job-board or AI provider calls.
+The tests cover provider adapters, dashboard behavior, Gmail setup, CV workflows,
+deduplication, and a simulated search. They do not verify live provider quality,
+every external email format, or all platform combinations.
 
-## Gmail job alerts
+Command-line tools remain available through `python jobpipe.py --help`. The
+optional legacy IMAP alert collector uses `GMAIL_ADDRESS` and
+`GMAIL_APP_PASSWORD`; it is separate from the dashboard's Gmail OAuth importer.
 
-Once Jobpipe is running, Gmail setup, sign-in, and imports require no terminal
-commands. Open [Job alerts](http://localhost:8787/#alerts) in your regular browser.
+## MVP status and feedback
 
-1. Expand **Set up Google connection · no terminal needed**.
-2. Follow the links to Google Cloud Console. Create or select a project, enable
-   the Gmail API, and configure Google Auth Platform branding and audience.
-   If the app is in Testing, add each Gmail address you want to connect as a test user.
-3. Under **Clients**, create an OAuth client with application type **Desktop app**.
-   Download its JSON file.
-4. Upload that JSON using **Google Desktop app JSON** in Jobpipe. Jobpipe validates
-   and saves it locally; you do not need to rename or move the file yourself.
-5. Click **Connect Gmail**, sign in on Google's page, and approve read-only access.
-   Repeat this step for each account. If Google setup is already saved, skip
-   directly to this step.
-6. Click **Import alerts**, or start a search.
+This release is ready for hands-on trials of the current workflow. The next
+improvements should come from actual search sessions: missed suitable jobs,
+irrelevant recommendations, duplicate examples, confusing setup steps, and
+application outcomes.
 
-Google's one-time app setup still takes place on its website. For detailed setup
-instructions, see [Google's Gmail API guide](https://developers.google.com/workspace/gmail/api/quickstart/python).
-Google may expire grants from external apps in Testing after seven days; reconnect
-the affected account if authorization expires.
+Known gaps include near-duplicate review, expired-posting verification, automatic
+reassessment, richer eligibility interpretation, and learning from feedback.
+No interview or hiring outcome has been validated by the automated tests.
 
-Jobpipe checks the last 14 days for LinkedIn, Glassdoor, Indeed and StepStone alerts.
-It removes tracking parameters from supported posting links and merges copies of
-the same link across accounts. An alert with a single listing and a sufficiently
-detailed, explicitly labeled description enters scoring. For other links, open the
-posting and paste its description into the alert row. Tracking-only and unsupported
-links are skipped. XING and WeAreDevelopers do not yet have automatic connectors;
-use **Add a posting** for those sites.
+When reporting an issue, include the step you took, what you expected, and what
+happened. Remove CV details, emails, API keys, and account grants before sharing
+screenshots or logs.
 
-The uploaded app configuration is saved as `gmail-client.json` with restricted
-file permissions. It is excluded from Git and the Docker build context. The
-dashboard never returns its secret. To replace the Google app configuration,
-disconnect existing accounts first, upload the replacement, then reconnect them.
+## License
 
-Account grants and extracted leads are stored locally under `.gmail/`. Disconnecting
-removes the local grant and keeps imported leads. You can revoke Google access from
-your Google Account's third-party connections page. Gmail read-only access can read
-mailbox contents. Jobpipe limits its searches to the supported job boards and stores
-only extracted job information, message IDs and connection details.
-
-[Google OAuth desktop setup](https://developers.google.com/identity/protocols/oauth2/native-app)
-
-## Job sources
-
-Open **Job sources**, paste a public Greenhouse or Lever board URL, and choose
-**Preview listings**. **Save source** adds the board to future searches using your
-existing location and scoring filters. **Remove** stops future checks. For other
-career sites, use **Add a posting** to paste individual job descriptions.
-
-## Markdown and LaTeX CVs
-
-In **My CV**, upload a UTF-8 `.md` or `.tex` file, review it in the editor, and
-select **Save CV** to use it in future searches. **Score CV** and **Suggest
-improvements** use the configured AI provider on the current editor contents.
-Apply individual suggestions to the editor, then save when ready.
-
-LaTeX import supports self-contained documents with common sections, lists,
-and resume commands. Jobpipe extracts text without compiling the document.
-Custom macros and templates can affect extraction. Job PDFs use the standard
-Jobpipe layout and are generated on click. Existing scores and drafts reflect
-the CV used when they were generated.
-
-Back up `cv-source.json` with your other Jobpipe data once you save an active
-CV from the editor. Older installations use `cv.md` until the first save.
-
-## Focus your searches
-
-Set job title phrases, skills, locations, and sponsorship phrases in **Preferences**.
-Title phrases restrict the roles considered when provided. The local relevance
-cutoff favors skills in titles and requirements over general mentions. A cutoff
-of 4 is the default. Location, relocation signals, and posting date break ties.
-You can choose whether to include unlisted locations or consider jobs outside
-your locations when a relocation phrase matches.
-
-**Jobs per search** caps AI scoring after local ranking. A search can score fewer
-jobs if too few clear the cutoff. Unscored jobs that still appear in their sources
-can compete with newer matches next time. The activity panel shows the current
-search's found, passed filters, sent to AI, and shortlisted counts.
-
-## Requirements, evidence, and focused review
-
-Preferences now include required posting terms, a sponsorship requirement, a policy
-for unknown information, and the review queue size. These start empty or disabled.
-Required terms missing from a posting remain unknown; a keyword match is only a
-text signal, not proof of eligibility. Sponsorship detection conservatively flags
-explicit refusals; other sponsorship information still needs checking.
-
-Job details separate eligibility checks from fit scores. A separate AI evidence
-request returns posting and CV quotes; only exact quotes in the supplied text
-are displayed. This verifies quotation provenance, not the interpretation.
-Evidence failure does not discard an otherwise scored job. This adds one AI call
-per scored job; the jobs-per-search limit remains a job limit, not a call limit.
-Old saved analyses remain unchanged.
-
-Interested / Not for me feedback is stored separately and can be cleared from the
-open job drawer. Dismissed jobs are hidden from job lists. Feedback does not silently
-change preferences or model weights. Automatic preference suggestions and similarity
-learning are future work.
-
-Enable Focused review queue above the opportunities list to use the size in
-Preferences. It pages through existing results in score order without inventing
-matches to fill the page. Unprocessed candidates persist in SQLite and are checked
-against current preferences on subsequent searches. Saved source text may become
-stale; expiry verification is not implemented.
-
-## Duplicate prevention
-
-Before filtering or AI calls, Jobpipe stores source identities and canonical URLs
-in SQLite. It removes known tracking parameters while preserving unknown query
-parameters that may identify a vacancy. Different sources with identical normalized
-company, title, location, and a description of at least 200 characters share one
-internal job. Missing locations and short descriptions cannot trigger content merges.
-All source references are retained and shown in job details.
-
-The longest available description is selected before scoring. Already processed
-identities are not analyzed again, and an exclusive search lock prevents simultaneous
-pipeline runs against the same data folder (Linux/macOS, including Docker).
-Activity reports merged duplicates and already processed listings.
-
-Existing jobs sharing a canonical URL are grouped without deleting records, drafts,
-feedback, or application history; the list prefers an applied record when present.
-Legacy records lack source descriptions, so retrospective cross-site content matching
-cannot be performed reliably.
-
-This release deliberately does not merge near matches, resolve redirect links over
-the network, or automatically rescore changed descriptions, CVs, or preferences.
-Similar edited reposts can still appear separately. Analysis input caching and
-a review interface for uncertain matches remain future work.
+Jobpipe is licensed under the [MIT License](LICENSE). You may use, modify, and
+redistribute the software, including commercially, subject to its terms.
+Dependencies and external services retain their own licenses and terms.
