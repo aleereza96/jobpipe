@@ -248,13 +248,28 @@ cvFile.addEventListener('change', safely(async () => {
 
 $('#save-cv').addEventListener('click', safely(async () => {
   const revision = cvRevision;
-  await api('/api/settings', {cv: cvEditor.value, cv_format: cvFormat.value});
-  if (revision === cvRevision) {
-    cvDirty = false;
-    $('#cv-file-status').textContent = 'Saved as your active CV.';
-  }
-  toast('CV saved for your next search.');
+  const source = cvEditor.value, format = cvFormat.value;
+  const button = $('#save-cv');
+  button.disabled = true;
+  $('#cv-file-status').textContent = 'Saving your CV…';
+  try {
+    await api('/api/settings', {cv: source, cv_format: format});
+    const saved = await api('/api/settings');
+    if(saved.cv !== source || saved.cv_format !== format)throw new Error('Saved CV could not be verified. Your editor text is still here; please retry.');
+    if (revision === cvRevision) {
+      cvDirty = false;
+      $('#cv-file-status').textContent = 'Saved and verified on the server at '+new Date().toLocaleTimeString()+'. Existing job scores need explicit rescoring.';
+    } else {
+      $('#cv-file-status').textContent = 'Earlier version saved. You made more edits while saving; save again to include them.';
+    }
+    toast('CV saved and verified.');
+  } catch(error) {
+    cvDirty = true;
+    $('#cv-file-status').textContent = 'CV NOT saved: '+error.message+' Your editor text has been kept.';
+    throw error;
+  } finally {button.disabled=['running','stopping'].includes(state.run);}
 }));
+
 
 async function reviewCv(action) {
   if(action==='rewrite'&&!$('#cv-edit-prompt').value.trim())throw new Error('Describe the changes you want first.');
