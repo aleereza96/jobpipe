@@ -135,7 +135,7 @@ def ask_ai(config, system, user, max_tokens=1500, schema=None, stage=None):
                 raise RuntimeError("Codex CLI not found. Install it and run codex login; "
                                    "or set codex_command to its full executable path.") from exc
             except subprocess.TimeoutExpired as exc:
-                raise RuntimeError(f"Codex timed out after {timeout:g}s; job will retry next run") from exc
+                raise RuntimeError(f"Codex timed out after {timeout:g}s. Check the AI connection or increase the timeout in Preferences, then retry") from exc
             if result.returncode:
                 # CLI stderr may contain input data: don't print the CV or posting into logs.
                 raise RuntimeError(f"Codex exited with code {result.returncode}. Check codex login status, "

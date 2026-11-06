@@ -154,3 +154,26 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(cfg['ai_provider'], 'codex')
         with self.assertRaises(ValueError):
             ai.validate_agents([agent, agent], {})
+
+
+class DeviceLoginTests(unittest.TestCase):
+    def test_success_and_failure_redaction(self):
+        import codex_login, time
+        from io import StringIO
+        def wait_done():
+            deadline = time.monotonic() + 2
+            while codex_login.snapshot()['state'] in ('starting', 'waiting') and time.monotonic() < deadline:
+                time.sleep(.01)
+        process = types.SimpleNamespace(stdout=StringIO('https://auth.openai.com/codex/device\nABCD-1234\n'),
+                                        wait=lambda: 0)
+        with patch('codex_login.subprocess.Popen', return_value=process):
+            codex_login.start('codex', '.', lambda: True)
+            wait_done()
+        self.assertEqual(codex_login.snapshot()['state'], 'connected')
+        self.assertIsNone(codex_login.snapshot()['code'])
+        process = types.SimpleNamespace(stdout=StringIO('error sending request SECRET_VALUE'), wait=lambda: 1)
+        with patch('codex_login.subprocess.Popen', return_value=process):
+            codex_login.start('codex', '.', lambda: False)
+            wait_done()
+        self.assertEqual(codex_login.snapshot()['state'], 'failed')
+        self.assertNotIn('SECRET_VALUE', str(codex_login.snapshot()))

@@ -24,6 +24,7 @@ import secrets
 
 import gmail_alerts
 import dedup
+import codex_login
 from ai_provider import validate_agents
 import cv_source
 import sources
@@ -296,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == '/api/run':
                 with LOCK: snapshot = dict(RUN, logs=list(LOGS))
                 return self.reply(snapshot)
+            if parsed.path == '/api/auth/login':
+                return self.reply(codex_login.snapshot())
             if parsed.path == '/api/auth':
                 return self.reply(auth_status())
             if parsed.path == '/api/settings':
@@ -354,6 +357,23 @@ class Handler(BaseHTTPRequestHandler):
                         con.execute('INSERT OR REPLACE INTO feedback VALUES(?,?,?,?)',
                                     (job_id, decision, reason, datetime.now().isoformat()))
                 return self.reply({'ok': True})
+            if path in ('/api/auth/login', '/api/auth/cancel', '/api/auth/logout'):
+                with LOCK:
+                    if RUN['state'] in ('running', 'stopping'):
+                        raise ValueError('Wait for the search to finish before changing sign-in.')
+                    config = json.loads((DATA / 'config.json').read_text())
+                    command = config.get('codex_command', 'codex')
+                    if path == '/api/auth/login':
+                        return self.reply(codex_login.start(command, APP, lambda: auth_status()['ready']), 202)
+                    codex_login.cancel()
+                    if path == '/api/auth/logout':
+                        try:
+                            result = subprocess.run([command, 'logout'], capture_output=True, timeout=15)
+                        except (OSError, subprocess.TimeoutExpired):
+                            raise ValueError('Could not disconnect Codex. Try again.') from None
+                        if result.returncode:
+                            raise ValueError('Codex logout failed. Try again.')
+                    return self.reply({'ok': True})
             if path == '/api/agents/test':
                 from ai_provider import ask_ai, validate_score, SCORE_SCHEMA, STAGES, agent_stamp
                 from cv_review import review

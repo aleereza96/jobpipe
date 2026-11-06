@@ -414,3 +414,22 @@ $('#agent-import').addEventListener('change',safely(async event=>{
  agentLibrary=data.agents;agentAssignments=data.agent_assignments;editingAgent=agentLibrary[0]?.id||null;renderAgents();toast('Imported for review. Save to activate.');}
  finally{event.target.value='';}
 }));
+
+let codexPollBusy=false;
+async function pollCodexLogin(){
+ if(codexPollBusy)return;codexPollBusy=true;
+ try{
+  const data=await api('/api/auth/login');const active=['starting','waiting'].includes(data.state);
+  $('#codex-login-status').textContent=data.message;$('#codex-connect').disabled=active;
+  $('#codex-cancel').classList.toggle('hidden',!active);$('#codex-logout').disabled=active;
+  $('#codex-device').classList.toggle('hidden',!data.code);
+  $('#codex-device-code').textContent=data.code||'';
+  $('#codex-login-link').removeAttribute('href');
+  if(data.url==='https://auth.openai.com/codex/device')$('#codex-login-link').href=data.url;
+  if(data.state==='connected'){$('#auth-message').textContent='Codex is connected';$('#auth-label').textContent='Connected';}
+ }finally{codexPollBusy=false;}
+}
+$('#codex-connect').addEventListener('click',safely(async()=>{await api('/api/auth/login',{});await pollCodexLogin();}));
+$('#codex-cancel').addEventListener('click',safely(async()=>{await api('/api/auth/cancel',{});await pollCodexLogin();}));
+$('#codex-logout').addEventListener('click',safely(async()=>{await api('/api/auth/logout',{});await pollCodexLogin();await checkAuth();}));
+setInterval(()=>{if(state.view==='settings')pollCodexLogin().catch(()=>{});},2000);

@@ -79,6 +79,19 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(result[1]['agent']['id'], 'editor')
         self.assertEqual(self.request('/api/agents/test', {'stage': 'bad', 'sample': 'CV'})[0], 400)
 
+    def test_codex_device_login_routes(self):
+        import codex_login
+        self.assertEqual(self.request('/api/auth/login')[0], 200)
+        with patch('codex_login.start', return_value={'state': 'starting'}) as start:
+            self.assertEqual(self.request('/api/auth/login', {})[0], 202)
+            self.assertTrue(start.called)
+        with patch('codex_login.cancel') as cancel:
+            self.assertEqual(self.request('/api/auth/cancel', {})[0], 200)
+            cancel.assert_called_once()
+        with patch('codex_login.cancel'), patch('server.subprocess.run') as run:
+            run.return_value.returncode = 0
+            self.assertEqual(self.request('/api/auth/logout', {})[0], 200)
+
     def test_gmail_ui_setup(self):
         self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
         client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}

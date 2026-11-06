@@ -225,15 +225,29 @@ Open [localhost:8787](http://localhost:8787).
 
 ### Connect an AI provider
 
-**Codex is the default.** From the project folder, run:
+**Codex is the default.** Sign in without terminal commands:
 
-```sh
-docker compose exec jobpipe codex login --device-auth
-```
+1. Open **Preferences → Connect Codex** and click **Connect / Retry**.
+2. Wait for the temporary device code, then click **Open OpenAI sign-in**.
+3. Approve sign-in on OpenAI's website and enter the code. Keep Jobpipe open.
+4. Jobpipe checks completion automatically and shows **Connected**.
 
-Follow the sign-in instructions, then use **Preferences → Check connection**.
-Device login availability depends on your account and workspace settings. Login
-is saved in the separate `codex_home` Docker volume.
+Use **Cancel** to stop a pending flow, **Connect / Retry** after failure or expiry,
+and **Disconnect** to remove the saved Codex login. A pending attempt is limited
+to ten minutes; restarting Jobpipe discards its in-memory progress. Device login
+may need enabling in your ChatGPT security or workspace settings. See the
+[official authentication guide](https://learn.chatgpt.com/docs/auth).
+
+Jobpipe never requests your OpenAI password. Codes are temporary and must not be
+shared. Login output is filtered rather than returned as raw logs, and saved
+credentials stay in the existing Docker volume. Docker still needs access to
+OpenAI's authentication and inference services: UI sign-in cannot fix blocked
+network routes, proxy issues, or TLS errors.
+
+For troubleshooting, the equivalent terminal command remains:
+`docker compose exec jobpipe codex login --device-auth`.
+Use **Check connection** to check the saved CLI login; it does not run an
+inference request or prove end-to-end AI connectivity.
 
 **Anthropic is optional.** Copy `.env.example` to `.env`, set
 `ANTHROPIC_API_KEY`, then recreate the container:
