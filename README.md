@@ -342,12 +342,12 @@ local desktop deployment is the simplest path for Gmail.
 
 Once Jobpipe is running, Gmail setup and imports happen through the browser:
 
-1. Open **Job alerts → Set up Google connection · no terminal needed**.
+1. Open **Job alerts**. The JSON uploader is visible under **1. Upload your Google connection file**; expand **Need a JSON file? Step-by-step Google setup guide** for help.
 2. Follow the link to Google Cloud Console. Create/select a project, enable the
    Gmail API, and configure Google Auth Platform branding and audience.
 3. If the Google app is in Testing, add the Gmail accounts as test users.
 4. Create an OAuth client of type **Desktop app**, then download its JSON.
-5. Upload it using **Google Desktop app JSON**. No renaming or manual file move is needed.
+5. Upload it using **Upload Google OAuth JSON**. No renaming or manual file move is needed.
 6. Click **Connect Gmail**, sign in on Google's page, and approve read-only access.
    Repeat for additional accounts.
 7. Choose **Import alerts**, or start a search.

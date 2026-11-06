@@ -44,26 +44,30 @@
 <section id="alerts-view"  class="view hidden">
   <div class="page-heading"><div><h1>Job alerts</h1><p>Bring job alerts from Gmail into your search.</p></div></div>
   <div class="form-card">
-    <h2>Gmail accounts</h2>
-    <details id="gmail-setup"><summary>Set up Google connection · no terminal needed</summary>
+    <h2>Connect Gmail</h2>
+    <h3>1. Upload your Google connection file</h3>
+    <p>Already downloaded the JSON from Google Cloud? Choose it here. Use an OAuth <strong>Desktop app</strong> JSON, not a service-account key. No renaming or terminal commands needed.</p>
+    <label for="gmail-client-upload">Upload Google OAuth JSON<input id="gmail-client-upload" type="file" accept=".json,application/json"></label>
+    <p id="gmail-setup-result" role="status"></p>
+    <details id="gmail-setup"><summary>Need a JSON file? Step-by-step Google setup guide</summary>
     <ol>
       <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> and create or select a project.</li>
       <li>Enable the Gmail API in the API Library.</li>
       <li>Configure Google Auth Platform branding and audience. For a personal app in Testing, add your Gmail address under Test users.</li>
       <li>Under Clients, create an OAuth client with application type <strong>Desktop app</strong>. Download its JSON file.</li>
-      <li>Upload that file below, then choose <strong>Connect Gmail</strong> and approve access on Google's sign-in page.</li>
+      <li>Upload that file using the chooser above, then choose <strong>Connect Gmail</strong> and approve access on Google's sign-in page.</li>
     </ol>
     <p>The file and account grants stay in your local Jobpipe data. Read-only Gmail permission allows reading email; Jobpipe searches supported job-alert senders. Testing grants may expire and require reconnection.</p>
-    <label>Google Desktop app JSON<input id="gmail-client-upload" type="file" accept=".json,application/json"></label>
-    <p id="gmail-setup-result" role="status"></p>
     <p><a href="https://developers.google.com/workspace/gmail/api/quickstart/python" target="_blank" rel="noopener noreferrer">Google setup guide</a></p>
     </details>
+    <h3>2. Sign in with Google</h3><p>After uploading the file, choose Connect Gmail. Sign in and approve read-only access on Google’s website. Repeat for additional accounts.</p>
     <p id="gmail-status" role="status"></p>
     <div class="form-actions">
       <button id="gmail-connect" class="primary" type="button">Connect Gmail</button>
       <button id="gmail-sync" class="secondary" type="button">Import alerts</button>
     </div>
     <div id="gmail-accounts"></div>
+    <h3>3. Import your job alerts</h3><p>Choose Import alerts above, or start a job search. Supported alerts appear below; add a full description when an alert contains only a link.</p>
   </div>
   <div class="form-card">
     <h2>Recent alerts</h2>

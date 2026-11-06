@@ -92,11 +92,12 @@ boardSave.addEventListener('click', safely(async () => {
 
 async function loadAlerts() {
   const {configured, accounts, leads} = await api('/api/gmail');
+  $('#gmail-setup').open = !configured;
   $('#gmail-connect').disabled = !configured;
   $('#gmail-sync').disabled = !configured || !accounts.length;
   $('#gmail-status').textContent = configured
-    ? 'Connected accounts sync when you start a search.'
-    : 'Open Set up Google connection below and upload your Desktop app JSON, then connect Gmail.';
+    ? (accounts.length ? 'Google setup saved. Connected accounts sync when you start a search.' : 'Google setup saved. Choose Connect Gmail to sign in.')
+    : 'Upload your Google OAuth JSON in step 1 to enable Connect Gmail.';
   $('#gmail-accounts').replaceChildren();
   for (const account of accounts) {
     const row = document.createElement('p');
