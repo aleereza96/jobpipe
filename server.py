@@ -30,6 +30,7 @@ import cv_source
 import sources
 from urllib.parse import parse_qs, urlsplit
 import uuid
+import hashlib
 
 APP = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('JOBPIPE_DATA_DIR', APP)).resolve()
@@ -39,6 +40,7 @@ RUN = {'state': 'idle', 'started': None, 'finished': None, 'exit_code': None}
 LOGS = deque(maxlen=500)
 PROCESS = None
 GMAIL_PENDING = {}
+RESCORE_PLANS = {}
 GMAIL_SYNC = threading.Lock()
 
 
@@ -142,7 +144,7 @@ def watch(process):
             RUN.update(state='failed', finished=datetime.now().isoformat())
 
 
-def start_run():
+def start_run(rescore_request=None):
     global PROCESS
     with LOCK:
         if RUN['state'] in ('running', 'stopping'):
@@ -153,12 +155,13 @@ def start_run():
             if not status['ready']:
                 raise ValueError(status['message'])
         env = dict(os.environ, JOBPIPE_DATA_DIR=str(DATA), PYTHONUNBUFFERED='1', PYTHONUTF8='1')
-        PROCESS = subprocess.Popen([sys.executable, '-u', str(APP / 'jobpipe.py'), 'run'],
+        command = [sys.executable, '-u', str(APP / 'jobpipe.py'), 'run'] if rescore_request is None else [sys.executable, '-u', str(APP / 'jobpipe.py'), 'rescore', str(rescore_request)]
+        PROCESS = subprocess.Popen(command,
                                    cwd=APP, env=env, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                    start_new_session=True)
         LOGS.clear()
-        RUN.update(counts=None, state='running', started=datetime.now().isoformat(), finished=None, exit_code=None)
+        RUN.update(mode='rescore' if rescore_request else 'search', dedup=None, counts=None, state='running', started=datetime.now().isoformat(), finished=None, exit_code=None)
         threading.Thread(target=watch, args=(PROCESS,), daemon=True).start()
 
 
@@ -206,6 +209,7 @@ def job_rows(query):
     with connect() as con:
         total = con.execute('SELECT count(*) FROM jobs' + where, params).fetchone()[0]
         rows = con.execute('SELECT id,title,company,location,url,score,status,analysis,found_at,applied_at,follow_up_at FROM jobs' + where + ' ORDER BY score DESC, found_at DESC LIMIT ? OFFSET ?', [*params, limit, offset]).fetchall()
+    current_cv = hashlib.sha256(cv_source.active_markdown(DATA).encode()).hexdigest()
     result = []
     for row in rows:
         item = dict(row)
@@ -216,6 +220,7 @@ def job_rows(query):
         with connect() as con:
             item['sources'] = [dict(r) for r in con.execute(
                 'SELECT source_id,url FROM job_sources WHERE job_id=?', (item['id'],))]
+        item['cv_match'] = 'current' if item['analysis'].get('cv_fingerprint') == current_cv else 'older or unknown'
         result.append(item)
     return {'jobs': result, 'total': total, 'limit': limit, 'offset': offset}
 
@@ -357,6 +362,60 @@ class Handler(BaseHTTPRequestHandler):
                         con.execute('INSERT OR REPLACE INTO feedback VALUES(?,?,?,?)',
                                     (job_id, decision, reason, datetime.now().isoformat()))
                 return self.reply({'ok': True})
+            if path == '/api/rescore/preview':
+                with LOCK:
+                    if RUN['state'] in ('running', 'stopping'):
+                        raise ValueError('Wait for the current search to finish.')
+                    ids = body.get('ids')
+                    if ids is not None and (not isinstance(ids, list) or not ids or len(ids) > 200 or any(not isinstance(x, str) for x in ids)):
+                        raise ValueError('Choose up to 200 job IDs.')
+                    cfg = json.loads((DATA / 'config.json').read_text())
+                    cv = cv_source.active_markdown(DATA)
+                    jobs, unavailable = [], 0
+                    with connect() as con:
+                        rows = con.execute("SELECT * FROM jobs WHERE status != 'applied' AND id NOT IN (SELECT duplicate_id FROM duplicate_links) AND id NOT IN (SELECT job_id FROM feedback WHERE decision='dismissed') ORDER BY score DESC,id").fetchall()
+                        for row in rows:
+                            if ids is not None and row['id'] not in ids:
+                                continue
+                            if ids is None:
+                                try:
+                                    if json.loads(row['analysis'] or '{}').get('cv_fingerprint') == hashlib.sha256(cv.encode()).hexdigest():
+                                        continue
+                                except (ValueError, AttributeError):
+                                    pass
+                            candidates = [json.loads(x[0]) for x in con.execute('SELECT payload FROM job_sources WHERE job_id=?', (row['id'],))]
+                            candidates = [x for x in candidates if isinstance(x.get('description'), str) and x['description'].strip()]
+                            if not candidates:
+                                unavailable += 1
+                                continue
+                            jobs.append(dict(max(candidates, key=lambda x: len(x['description'])), id=row['id']))
+                    jobs = jobs[:cfg.get('max_llm_jobs_per_run', 20)]
+                    if not jobs:
+                        raise ValueError('No eligible jobs have saved descriptions. Applied and dismissed jobs are excluded; older jobs may need their full description imported again.')
+                    token = secrets.token_urlsafe(24)
+                    RESCORE_PLANS.clear()
+                    RESCORE_PLANS[token] = {'jobs': jobs, 'cv_fingerprint': hashlib.sha256(cv.encode()).hexdigest(), 'expires': time.monotonic()+300}
+                    return self.reply({'token': token, 'count': len(jobs), 'unavailable': unavailable,
+                                       'jobs': [{'id': x['id'], 'title': x['title']} for x in jobs]})
+            if path == '/api/rescore/start':
+                with LOCK:
+                    token = body.get('token')
+                    if not isinstance(token, str):
+                        raise ValueError('Preview rescoring first.')
+                    plan = RESCORE_PLANS.pop(token, None)
+                    if not plan or plan['expires'] < time.monotonic():
+                        raise ValueError('Preview expired. Preview again.')
+                    cv = cv_source.active_markdown(DATA)
+                    if hashlib.sha256(cv.encode()).hexdigest() != plan['cv_fingerprint']:
+                        raise ValueError('CV changed. Preview again before spending AI allowance.')
+                    request = DATA / ('.rescore-' + uuid.uuid4().hex + '.json')
+                    atomic_write(request, json.dumps(plan))
+                    try:
+                        start_run(request)
+                    except Exception:
+                        request.unlink(missing_ok=True)
+                        raise
+                    return self.reply({'ok': True}, 202)
             if path in ('/api/auth/login', '/api/auth/cancel', '/api/auth/logout'):
                 with LOCK:
                     if RUN['state'] in ('running', 'stopping'):
@@ -536,6 +595,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(job_id, str): raise ValueError('Choose a job')
                 now = datetime.now()
                 with LOCK, connect() as con:
+                    if RUN['state'] in ('running', 'stopping') and RUN.get('mode') == 'rescore':
+                        raise ValueError('Wait for rescoring to finish before marking applied.')
                     row = con.execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
                     if not row: raise ValueError('Job not found')
                     if row['status'] not in ('shortlisted', 'applied'): raise ValueError('Only shortlisted jobs can be marked applied')

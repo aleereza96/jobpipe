@@ -11,6 +11,9 @@ Usage:
   python jobpipe.py alerts           # collect links from job-alert emails
 """
 import argparse
+import hashlib
+import tempfile
+import shutil
 import csv
 import json
 import os
@@ -215,6 +218,8 @@ def score_job(cv, j):
         result["evidence"] = []
         result["evidence_status"] = "Evidence unavailable; review the posting"
     result["agents"] = {stage: agent_stamp(CFG, stage) for stage in ("scoring", "evidence", "drafting")}
+    result["cv_fingerprint"] = hashlib.sha256(cv.encode()).hexdigest()
+    result["scored_at"] = datetime.now().isoformat(timespec="seconds")
     result["eligibility"] = search_rank.eligibility(j, CFG)
     return result
 
@@ -268,14 +273,73 @@ def export_review(con):
                         "; ".join(a.get("gaps", []))])
 
 
-def run():
+def run(request_file=None):
     import fcntl
     with open(ROOT / ".search.lock", "a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("A search is already running in this data folder") from None
-        return _run_locked()
+        return rescore(request_file) if request_file else _run_locked()
+
+
+def rescore(request_file):
+    """Explicit reassessment; retain prior data on AI failure, never touch applied jobs."""
+    global OUT
+    request = json.loads(Path(request_file).read_text())
+    cv = active_markdown(ROOT)
+    if hashlib.sha256(cv.encode()).hexdigest() != request["cv_fingerprint"]:
+        raise ValueError("CV changed after preview. Preview rescoring again.")
+    con = db()
+    con.execute("""CREATE TABLE IF NOT EXISTS analysis_history(
+        id INTEGER PRIMARY KEY, job_id TEXT, saved_at TEXT, score INTEGER,
+        status TEXT, analysis TEXT, draft TEXT)""")
+    counts = {"found": len(request["jobs"]), "passed": len(request["jobs"]), "sent": 0, "shortlisted": 0}
+    actual_out = OUT
+    try:
+        for job in request["jobs"]:
+            row = con.execute("SELECT score,status,analysis FROM jobs WHERE id=?", (job["id"],)).fetchone()
+            if not row or row[1] == "applied":
+                continue
+            counts["sent"] += 1
+            print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+            folder_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", job["id"])[:80]
+            target = actual_out / folder_name / "application.md"
+            with tempfile.TemporaryDirectory(prefix="jobpipe-rescore-") as staging:
+                OUT = Path(staging)
+                j, analysis, status, reason = process(cv, job)
+                OUT = actual_out
+                if status is None:
+                    print("Rescore failed; previous analysis retained for " + job["id"], flush=True)
+                    continue
+                if reason:
+                    analysis["skip"] = reason
+                prior_draft = target.read_text(encoding="utf-8") if target.exists() else None
+                with con:
+                    current = con.execute("SELECT status FROM jobs WHERE id=?", (job["id"],)).fetchone()
+                    if not current or current[0] == "applied":
+                        continue
+                    con.execute("INSERT INTO analysis_history(job_id,saved_at,score,status,analysis,draft) VALUES(?,?,?,?,?,?)",
+                                (job["id"], datetime.now().isoformat(), *row, prior_draft))
+                    con.execute("UPDATE jobs SET score=?,status=?,analysis=? WHERE id=?",
+                                (analysis["score"], status, json.dumps(analysis), job["id"]))
+                generated = Path(staging) / folder_name / "application.md"
+                if generated.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    temp = target.with_suffix(".md.tmp")
+                    shutil.copyfile(generated, temp)
+                    temp.replace(target)
+                elif target.exists():
+                    target.unlink()
+                if status == "shortlisted":
+                    counts["shortlisted"] += 1
+            print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+        export_review(con)
+        print("Rescoring finished. Failed jobs retain their previous results.", flush=True)
+    finally:
+        OUT = actual_out
+        con.close()
+        Path(request_file).unlink(missing_ok=True)
 
 
 def _run_locked():
@@ -384,10 +448,12 @@ def alerts():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["run", "list", "applied", "followups", "boards", "alerts"])
+    ap.add_argument("cmd", choices=["run", "list", "applied", "followups", "boards", "alerts", "rescore"])
     ap.add_argument("job_id", nargs="?")
     args = ap.parse_args()
-    if args.cmd == "applied":
+    if args.cmd == "rescore":
+        run(args.job_id) if args.job_id else ap.error("rescore needs a request file")
+    elif args.cmd == "applied":
         mark_applied(args.job_id) if args.job_id else ap.error("applied needs a job id")
     else:
         {"run": run, "list": list_jobs, "followups": followups,

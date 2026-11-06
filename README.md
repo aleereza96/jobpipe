@@ -97,9 +97,7 @@ Existing exact-URL duplicates are hidden from the job list without deleting
 history or drafts; applied records take precedence. Older records lack full
 descriptions, so historical cross-site content matching is limited.
 
-Similar-but-edited postings may remain separate. Automatic rescoring after changes
-to a posting, CV, or preferences is not implemented. Saved analyses and drafts
-continue to reflect their original inputs.
+Similar-but-edited postings may remain separate. Automatic rescoring is not performed. Use explicit rescoring after saving a new CV; otherwise analyses and drafts continue to reflect their original inputs.
 
 ### Review and feedback
 
@@ -110,6 +108,35 @@ matches to fill a quota.
 **Not for me** hides a job from lists; **Clear feedback** reverses that decision.
 Feedback is stored separately from application status. It does not yet train a
 model, adjust ranking, or silently change your preferences.
+
+## Rescore jobs after changing your CV
+
+Save your updated CV in **My CV** first. Unsaved editor changes are not included.
+
+- Open a job and choose **Rescore with saved CV** for a single eligible job.
+- Above Opportunities, choose **Rescore jobs with an older CV** for a batch.
+
+The preview lists the jobs and count before you confirm AI usage. Batch selection
+takes highest-scored jobs whose CV fingerprint is older or unknown, up to your
+**Jobs per search** limit. Applied, dismissed, and hidden duplicate records are
+excluded. Run another batch to continue through older results.
+
+Rescoring uses saved posting descriptions, the current saved CV, and current
+AI/agent settings; it does not fetch a fresh posting or rerun source discovery.
+It reevaluates fit, evidence, salary/language checks, and drafts when shortlisted.
+Local collection/ranking filters are not reapplied in this explicit review action.
+A CV change after preview invalidates confirmation.
+
+Successful rescoring replaces the visible analysis and draft. Previous score,
+status, analysis, and draft are archived in SQLite for preservation; there is no
+history browser or restore button yet. Failed AI requests keep the previous
+result. If a job no longer qualifies, the old active draft is removed after archiving.
+Original discovery dates, feedback, and source links are retained.
+
+Job details show whether the score used the current CV or an older/unknown one.
+Older records without saved descriptions cannot be reassessed; import their full
+description again. Applied jobs are never reassessed through this action. Progress
+and stopping use the existing Activity controls.
 
 ## Custom agents
 
@@ -435,7 +462,7 @@ to pin the CLI package version for builds.
 | AI search fails | Check provider login, model access, limits, timeout, and Activity |
 | Gmail connection fails | Check Desktop client type, enabled Gmail API, test users, and grant expiry |
 | A job looks duplicated | Edited descriptions or different URLs may evade conservative matching |
-| CV edits do not change old scores | Automatic reassessment is not implemented |
+| CV edits do not change old scores | Save the CV, then use explicit single-job or batch rescoring |
 | Python fails during locale startup | Use a valid UTF-8 locale; Docker already sets `C.UTF-8` |
 
 ## Technical overview

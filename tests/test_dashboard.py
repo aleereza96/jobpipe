@@ -92,6 +92,20 @@ class DashboardTests(unittest.TestCase):
             run.return_value.returncode = 0
             self.assertEqual(self.request('/api/auth/logout', {})[0], 200)
 
+    def test_rescore_preview_and_cv_change_guard(self):
+        with server.connect() as con:
+            con.execute("INSERT INTO jobs(id,title,status,score) VALUES('rescore-one','Engineer','shortlisted',85)")
+            con.execute("INSERT INTO job_sources VALUES(?,?,?,?,?)", ('source-one', 'rescore-one', 'https://example.com/1', None,
+                        json.dumps(dict(id='source-one', title='Engineer', company='Example', location='Berlin', url='https://example.com/1', description='Python engineering'))))
+        code, plan = self.request('/api/rescore/preview', {'ids': ['rescore-one']})
+        self.assertEqual(code, 200)
+        self.assertEqual(plan['count'], 1)
+        self.request('/api/settings', {'cv': '# Changed CV'})
+        self.assertEqual(self.request('/api/rescore/start', {'token': plan['token']})[0], 400)
+        with server.connect() as con:
+            con.execute("UPDATE jobs SET status='applied' WHERE id='rescore-one'")
+        self.assertEqual(self.request('/api/rescore/preview', {'ids': ['rescore-one']})[0], 400)
+
     def test_gmail_ui_setup(self):
         self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
         client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}

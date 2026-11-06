@@ -188,3 +188,29 @@ class DeviceLoginTests(unittest.TestCase):
             wait_done()
         self.assertEqual(codex_login.snapshot()['state'], 'failed')
         self.assertNotIn('SECRET_VALUE', str(codex_login.snapshot()))
+
+
+class RescoreTests(unittest.TestCase):
+    def test_replaces_analysis_preserves_history_and_failed_results(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'cv.md').write_text('Updated CV')
+            request = root/'request.json'
+            job = dict(id='one',title='Engineer',company='Example',location='Berlin',url='https://example.com',description='Python')
+            request.write_text(json.dumps({'jobs':[job], 'cv_fingerprint':hashlib.sha256(b'Updated CV').hexdigest()}))
+            with patch.object(jp,'ROOT',root), patch.object(jp,'DB_PATH',root/'jobs.db'), patch.object(jp,'OUT',root/'output'):
+                con=jp.db()
+                con.execute("INSERT INTO jobs(id,title,score,status,analysis,found_at) VALUES('one','Engineer',80,'shortlisted','{}','old-date')")
+                con.commit();con.close()
+                value=analysis(score=30)
+                with patch.object(jp,'process',return_value=(job,value,'low_score',None)):
+                    jp.rescore(request)
+                con=jp.db()
+                self.assertEqual(con.execute("SELECT score,found_at FROM jobs").fetchone(),(30,'old-date'))
+                self.assertEqual(con.execute("SELECT score FROM analysis_history").fetchone()[0],80)
+                request.write_text(json.dumps({'jobs':[job], 'cv_fingerprint':hashlib.sha256(b'Updated CV').hexdigest()}))
+                with patch.object(jp,'process',return_value=(job,None,None,None)):
+                    jp.rescore(request)
+                self.assertEqual(con.execute("SELECT score FROM jobs").fetchone()[0],30)
+                con.close()

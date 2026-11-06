@@ -339,6 +339,11 @@ openJob = async function(id) {
   const sources=document.createElement('p');
  sources.textContent='Sources: '+(state.detail.sources||[]).map(x=>x.url||x.source_id).join(' · ');
  section.append(sources);
+ const cvNote=document.createElement('p');cvNote.textContent='Scored CV: '+(state.detail.cv_match||'older or unknown');section.append(cvNote);
+ if(state.detail.status!=='applied'){
+  const rescore=document.createElement('button');rescore.className='secondary';rescore.textContent='Rescore with saved CV';
+  rescore.onclick=safely(()=>requestRescore([id]));section.append(rescore);
+ }
  $('#job-detail').append(section);
 };
 
@@ -433,3 +438,11 @@ $('#codex-connect').addEventListener('click',safely(async()=>{await api('/api/au
 $('#codex-cancel').addEventListener('click',safely(async()=>{await api('/api/auth/cancel',{});await pollCodexLogin();}));
 $('#codex-logout').addEventListener('click',safely(async()=>{await api('/api/auth/logout',{});await pollCodexLogin();await checkAuth();}));
 setInterval(()=>{if(state.view==='settings')pollCodexLogin().catch(()=>{});},2000);
+
+async function requestRescore(ids){
+ const plan=await api('/api/rescore/preview',ids?{ids}:{});
+ const message='Rescore '+plan.count+' job(s) using your SAVED CV and current AI settings? This uses AI allowance and replaces successful scores and drafts. Applied and dismissed jobs are excluded. Batch size follows Jobs per search. Unsaved CV edits are not included.'+String.fromCharCode(10)+plan.jobs.map(j=>j.title).join(String.fromCharCode(10))+(plan.unavailable?' — '+plan.unavailable+' jobs have no saved description.':'');
+ if(!confirm(message))return;
+ await api('/api/rescore/start',{token:plan.token});$('#activity-panel').classList.remove('hidden');closeDrawer();await pollRun();toast('Rescoring started.');
+}
+$('#rescore-batch').addEventListener('click',safely(()=>requestRescore()));
