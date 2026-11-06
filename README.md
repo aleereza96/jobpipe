@@ -400,7 +400,9 @@ must fit an existing prose anchor; creating entire sections or restructuring a
 template may require manual editing. Empty suggestions mean no safe edit passed
 validation, rather than a successful rewrite.
 
-PDFs are generated only when requested for a job with a saved draft. They use
+In **My CV**, **Download PDF** exports the current editor contents, including unsaved edits, without saving changes or calling AI. Both Markdown and supported LaTeX are accepted.
+
+Job-specific tailored PDFs are generated when requested for a job with a saved draft. Both exports use
 Jobpipe's standard layout rather than compiling the uploaded LaTeX template.
 
 ## Data, privacy, and everyday operation

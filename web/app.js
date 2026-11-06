@@ -447,3 +447,13 @@ async function requestRescore(ids){
  await api('/api/rescore/start',{token:plan.token});$('#activity-panel').classList.remove('hidden');closeDrawer();await pollRun();toast('Rescoring started.');
 }
 $('#rescore-batch').addEventListener('click',safely(()=>requestRescore()));
+
+$('#download-my-cv').addEventListener('click',safely(async()=>{
+ const button=$('#download-my-cv');button.disabled=true;button.textContent='Generating PDF…';
+ try{
+  const response=await fetch('/api/cv/download',{method:'POST',headers:{'Content-Type':'application/json','X-Jobpipe':'1'},body:JSON.stringify({cv:cvEditor.value,format:cvFormat.value})});
+  if(!response.ok)throw new Error((await response.json()).error||'Could not generate PDF.');
+  const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');
+  link.href=url;link.download='my-cv.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }finally{button.disabled=false;button.textContent='Download PDF';}
+}));

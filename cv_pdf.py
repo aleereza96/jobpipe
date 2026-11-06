@@ -57,10 +57,10 @@ def tailored_lines(cv, draft):
     return lines
 
 
-def render(cv, draft):
+def render(cv, draft=None):
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=A4, leftMargin=47, rightMargin=47,
-                            topMargin=42, bottomMargin=44, title="Tailored CV")
+                            topMargin=42, bottomMargin=44, title="Tailored CV" if draft is not None else "CV")
     body = ParagraphStyle("Body", fontName="Helvetica", fontSize=10, leading=14,
                           textColor=colors.HexColor("#202b27"), spaceAfter=4)
     name = ParagraphStyle("Name", parent=body, fontName="Helvetica-Bold",
@@ -72,7 +72,8 @@ def render(cv, draft):
                           spaceBefore=5, keepWithNext=True)
     bullet = ParagraphStyle("Bullet", parent=body, leftIndent=12, bulletIndent=1)
     story = []
-    for line in tailored_lines(cv, draft):
+    lines = tailored_lines(cv, draft) if draft is not None else re.sub(r"<!--.*?-->", "", cv, flags=re.S).splitlines()
+    for line in lines:
         line = line.strip()
         if not line:
             continue

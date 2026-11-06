@@ -463,6 +463,10 @@ class Handler(BaseHTTPRequestHandler):
                 except (RuntimeError, OSError) as exc:
                     return self.reply({'error': str(exc)}, 502)
                 return self.reply(result)
+            if path == '/api/cv/download':
+                from cv_pdf import render
+                cv = cv_source.as_markdown(body.get('cv'), body.get('format'))
+                return self.reply(render(cv), content_type='application/pdf', filename='my-cv.pdf')
             if path == '/api/cv/pdf':
                 job_id = body.get('id')
                 if not isinstance(job_id, str):

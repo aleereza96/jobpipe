@@ -106,6 +106,17 @@ class DashboardTests(unittest.TestCase):
             con.execute("UPDATE jobs SET status='applied' WHERE id='rescore-one'")
         self.assertEqual(self.request('/api/rescore/preview', {'ids': ['rescore-one']})[0], 400)
 
+    def test_download_editor_cv_pdf_without_saving(self):
+        original = (self.root / 'cv.md').read_text()
+        status, pdf = self.request('/api/cv/download', {'cv': '# My Name\n## Experience\n- Built APIs.', 'format': 'md'})
+        self.assertEqual(status, 200)
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertEqual((self.root / 'cv.md').read_text(), original)
+        status, pdf = self.request('/api/cv/download', {'cv': r'\documentclass{article}\begin{document}My Name Software Engineer building useful applications\end{document}', 'format': 'tex'})
+        self.assertEqual(status, 200)
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertEqual(self.request('/api/cv/download', {'cv': '', 'format': 'md'})[0], 400)
+
     def test_gmail_ui_setup(self):
         self.assertEqual(self.request('/api/gmail/setup', {'client': {'web': {}}})[0], 400)
         client = {'installed': {'client_id': 'example.apps.googleusercontent.com', 'client_secret': 'fake-test-secret'}}

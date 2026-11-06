@@ -82,7 +82,8 @@
 </div>
 <p id="cv-file-status" role="status">Upload or paste your CV, then save it for future searches.</p>
 <label for="cv-text">CV source</label><textarea id="cv-text" class="cv-editor" spellcheck="false" rows="25"></textarea><div class="form-actions">
-<div><button id="score-cv" class="secondary" type="button">Score CV</button>
+<div><button id="download-my-cv" class="secondary" type="button">Download PDF</button>
+<button id="score-cv" class="secondary" type="button">Score CV</button>
 <button id="suggest-cv" class="secondary" type="button">Suggest improvements</button></div>
 <small>Review uses your configured AI provider.</small>
 </div>
@@ -93,7 +94,7 @@
 <small>Natural wording improves clarity and tone; it does not guarantee passing AI detectors.</small>
 <p id="cv-review-status" role="status"></p>
 <div id="cv-review-results"></div>
-<small>Save to use your edits in future searches. Job PDFs use the Jobpipe layout.</small></div></section>
+<small>Download PDF exports the current editor, including unsaved edits, without saving or using AI. Markdown and LaTeX use the Jobpipe layout. Save to use your edits in future searches.</small></div></section>
 <section id="settings-view" class="view hidden"><div class="page-heading"><div><div class="eyebrow">MAKE THE SEARCH YOURS</div><h1>A little direction goes a long way<span>.</span></h1><p>Tell Jobpipe what matters to you.</p></div><button class="primary" id="save-settings">Save preferences</button></div><div class="settings-grid"><form id="settings-form" class="form-card"><h2>Search preferences</h2><div class="two-columns"><label>Minimum match score<input name="min_score" type="number" min="0" max="100" required></label><label>Minimum annual salary · EUR<input name="min_salary_eur" type="number" min="0" max="1000000" required></label></div><label>Skills & role keywords <span class="optional">comma separated</span><textarea name="include_keywords" rows="3"></textarea></label><label>Exclude keywords<textarea name="exclude_keywords" rows="2"></textarea></label><label>Preferred job titles <span class="optional">comma separated, optional</span><textarea name="role_keywords" rows="2" placeholder="Enter titles or title phrases"></textarea></label>
 <label>Minimum local relevance <span class="optional">0–23, before AI scoring</span><input name="min_relevance" type="number" min="0" max="23" required></label>
 <small>A cutoff of 4 usually requires a preferred title, a skill in the job title, or a skill in the requirements.</small>
