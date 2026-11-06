@@ -10,6 +10,22 @@ PROCESS = None
 STATE = {"state": "idle", "message": "Choose Connect Codex to sign in.", "code": None, "url": None}
 
 
+def parse_device_code(output):
+    """Read completed lines only: streaming prefixes are not complete codes."""
+    plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    if "https://auth.openai.com/codex/device" not in plain:
+        return None
+    for line in plain.splitlines(keepends=True):
+        if not line.endswith(("\n", "\r")):
+            continue
+        match = re.fullmatch(
+            r"\s*(?:(?:your\s+)?(?:one-time\s+|device\s+|temporary\s+)?code\s*:\s*)?"
+            r"([A-Z0-9]{3,6}-[A-Z0-9]{3,6}|[A-Z0-9]{8,12})\s*", line, re.I)
+        if match:
+            return match[1]
+    return None
+
+
 def snapshot():
     with LOCK:
         return dict(STATE)
@@ -70,13 +86,12 @@ def start(command, cwd, verify, timeout=600):
                 if not char:
                     break
                 output = (output + char)[-16000:]
-                plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
-                code = re.search(r"\b[A-Z0-9]{4}-[A-Z0-9]{4}\b", plain)
-                if code and "https://auth.openai.com/codex/device" in plain:
+                code = parse_device_code(output)
+                if code:
                     with LOCK:
                         if PROCESS is process:
                             STATE.update(state="waiting", message="Open OpenAI sign-in and enter the code. Keep this page open.",
-                                         code=code[0], url="https://auth.openai.com/codex/device")
+                                         code=code, url="https://auth.openai.com/codex/device")
             returncode = process.wait()
             ready = returncode == 0 and verify()
             with LOCK:

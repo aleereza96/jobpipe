@@ -157,6 +157,17 @@ class AgentTests(unittest.TestCase):
 
 
 class DeviceLoginTests(unittest.TestCase):
+    def test_complete_code_is_never_a_streaming_prefix(self):
+        from codex_login import parse_device_code
+        prefix = 'Open https://auth.openai.com/codex/device\n'
+        for value in ('ABCD-12345', '123456789', 'ABCDE-1234', 'ABCD-1234'):
+            for length in range(len(value) + 1):
+                self.assertIsNone(parse_device_code(prefix + value[:length]))
+            self.assertEqual(parse_device_code(prefix + value + '\n'), value)
+        self.assertEqual(parse_device_code(prefix + '\x1b[32mABCD-12345\x1b[0m\n'), 'ABCD-12345')
+        self.assertIsNone(parse_device_code('ABCD-12345\n'))
+
+
     def test_success_and_failure_redaction(self):
         import codex_login, time
         from io import StringIO
