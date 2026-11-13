@@ -24,6 +24,41 @@ async function pollRun(){const data=await api('/api/run');const counts=data.coun
 async function checkAuth(){const button=$('#check-auth');button.disabled=true;try{const data=await api('/api/auth');$('#auth-message').textContent=data.message;$('#auth-label').textContent=data.ready?'Connected':'Sign-in needed';}finally{button.disabled=false;}}
 async function loadBoards() {
   const boards = await api('/api/boards');
+  renderCustomSources(boards.custom_sources || []);
+  const sites = $('#website-sources');
+  sites.replaceChildren();
+  for (const site of boards.websites || []) {
+    const row = document.createElement('div');
+    const label = document.createElement('label');
+    label.className = 'checkbox';
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox'; toggle.checked = site.enabled;
+    const link = document.createElement('a');
+    link.href = site.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.textContent = site.name;
+    const status = document.createElement('p'); status.setAttribute('role', 'status');
+    toggle.addEventListener('change', safely(async () => {
+      toggle.disabled = true;
+      try {
+        await api('/api/websites/save', {id: site.id, enabled: toggle.checked});
+        status.textContent = toggle.checked ? 'Enabled for your next search.' : 'Source disabled.';
+      } catch (error) { toggle.checked = !toggle.checked; throw error; }
+      finally { toggle.disabled = false; }
+    }));
+    label.append(toggle, link);
+    const preview = document.createElement('button');
+    preview.type = 'button'; preview.className = 'secondary'; preview.textContent = 'Check access';
+    preview.addEventListener('click', async () => {
+      preview.disabled = true; status.textContent = 'Checking public listings…';
+      try {
+        const result = await api('/api/websites/preview', {id: site.id});
+        status.textContent = result.count + ' sample listings: ' + result.jobs.map(j => j.title).join(' · ') +
+          (result.warnings.length ? ' Some job details were unavailable.' : '');
+      } catch (error) { status.textContent = error.message; }
+      finally { preview.disabled = false; }
+    });
+    row.append(label, preview, status); sites.append(row);
+  }
   const list = $('#boards-list');
   list.replaceChildren();
   const hosts = {greenhouse: 'job-boards.greenhouse.io', lever: 'jobs.lever.co'};
@@ -471,4 +506,67 @@ $('#download-my-cv').addEventListener('click',safely(async()=>{
   const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');
   link.href=url;link.download='my-cv.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }finally{button.disabled=false;button.textContent='Download PDF';}
+}));
+
+function renderCustomSources(sources) {
+  const list = $('#custom-sources-list'); list.replaceChildren();
+  if (!sources.length) { list.textContent = 'No custom sources saved yet.'; return; }
+  for (const source of sources) {
+    const row = document.createElement('div');
+    const label = document.createElement('label'); label.className = 'checkbox';
+    const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = source.enabled;
+    const link = document.createElement('a'); link.href = source.url; link.textContent = source.name;
+    link.target = '_blank'; link.rel = 'noopener noreferrer';
+    toggle.addEventListener('change', safely(async () => {
+      toggle.disabled = true;
+      try { await api('/api/sources/toggle', {id: source.id, enabled: toggle.checked}); }
+      catch (error) { toggle.checked = !toggle.checked; throw error; }
+      finally { toggle.disabled = false; }
+    }));
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'subtle-button'; remove.textContent = 'Remove';
+    remove.addEventListener('click', safely(async () => { await api('/api/sources/remove', {id: source.id}); await loadBoards(); }));
+    label.append(toggle, link); row.append(label, remove); list.append(row);
+  }
+}
+let customSourceToken = '';
+let customTestVersion = 0;
+const customForm = $('#custom-source-form');
+customForm.addEventListener('input', () => {
+  customTestVersion++; customSourceToken = ''; $('#custom-save').disabled = true;
+  $('#custom-preview').replaceChildren(); $('#custom-status').textContent = '';
+});
+customForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const version = ++customTestVersion; customSourceToken = '';
+  $('#custom-save').disabled = true; $('#custom-test').disabled = true;
+  $('#custom-preview').replaceChildren(); $('#custom-status').textContent = 'Testing public listings…';
+  try {
+    const result = await api('/api/sources/test', {name: customForm.elements.name.value, url: customForm.elements.url.value});
+    if (version !== customTestVersion) return;
+    customSourceToken = result.token; $('#custom-save').disabled = false;
+    $('#custom-status').textContent = result.count + ' listings found in this sample. Your Preferences apply during searches.' + (result.warnings.length ? ' Some links could not be imported.' : '');
+    for (const job of result.jobs) { const item = document.createElement('li'); item.textContent = [job.title, job.company, job.location].filter(Boolean).join(' · '); $('#custom-preview').append(item); }
+  } catch (error) { if (version === customTestVersion) $('#custom-status').textContent = error.message; }
+  finally { $('#custom-test').disabled = false; }
+});
+$('#custom-save').addEventListener('click', safely(async () => {
+  const token = customSourceToken; if (!token) return;
+  $('#custom-save').disabled = true;
+  try {
+    await api('/api/sources/save', {token});
+    if (token === customSourceToken) { customSourceToken = ''; $('#custom-status').textContent = 'Source saved and enabled for your next search.'; }
+    await loadBoards();
+  } catch (error) { if (token === customSourceToken) $('#custom-save').disabled = false; throw error; }
+}));
+
+$('#check-setup').addEventListener('click', safely(async () => {
+  const button = $('#check-setup'); button.disabled = true;
+  $('#setup-status').textContent = 'Checking this installation…'; $('#setup-checks').replaceChildren();
+  try {
+    const result = await api('/api/setup');
+    $('#setup-status').textContent = (result.ok ? 'Installation checks passed. ' : 'Some setup steps need attention. ') + result.message;
+    for (const check of result.checks) {
+      const row = document.createElement('li'); row.textContent = (check.ok ? '✓ ' : '⚠ ') + check.name + ': ' + check.message; $('#setup-checks').append(row);
+    }
+  } finally { button.disabled = false; }
 }));

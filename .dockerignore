@@ -19,3 +19,11 @@
 !dedup.py
 
 !codex_login.py
+
+!websites.py
+
+!tests/test_websites.py
+
+!runtime_support.py
+!install.py
+!CODEX_VERSION

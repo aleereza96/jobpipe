@@ -26,6 +26,7 @@ from pathlib import Path
 from ai_provider import ask_ai, validate_score, SCORE_SCHEMA
 import requests
 
+import websites
 import sources
 import gmail_alerts
 from threading import Lock
@@ -142,6 +143,26 @@ def fetch_boards():
                 jobs += found
             except Exception as e:
                 print(f"  {kind}/{slug}: skipped ({e})")
+    for site in CFG.get("website_sources", []):
+        if site not in websites.SITES:
+            continue
+        try:
+            found, warnings = websites.fetch(site, ROOT / ".source-cache")
+            print(f"  {site}: {len(found)} found ({len(warnings)} unavailable details)")
+            jobs += found
+            if warnings:
+                print(f"  {site}: {warnings[0]}")
+        except Exception as error:
+            print(f"  {site}: skipped ({error})")
+    for spec in CFG.get("custom_sources", []):
+        if not spec.get("enabled", True):
+            continue
+        try:
+            found, warnings = websites.fetch_custom(spec, ROOT / ".source-cache")
+            jobs += found
+            print(f"  custom/{spec['name']}: {len(found)} found ({len(warnings)} unavailable details)")
+        except Exception as error:
+            print(f"  custom/{spec.get('name', 'source')}: skipped ({error})")
     return jobs
 
 

@@ -1,4 +1,5 @@
 """AI adapters: saved Codex CLI login by default; optional Anthropic API."""
+from runtime_support import codex_command
 import json
 import math
 import subprocess
@@ -113,7 +114,7 @@ def ask_ai(config, system, user, max_tokens=1500, schema=None, stage=None):
         with tempfile.TemporaryDirectory(prefix="jobpipe-") as directory:
             root = Path(directory)
             output = root / "response.txt"
-            command = [config.get("codex_command", "codex"), "exec",
+            command = [codex_command(config), "exec",
                        "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                        "--color", "never", "--output-last-message", str(output)]
             model = config.get("codex_model")

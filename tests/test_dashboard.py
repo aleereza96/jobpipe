@@ -33,15 +33,49 @@ class DashboardTests(unittest.TestCase):
         self.temp.cleanup()
 
     def request(self, path, body=None, headers=None):
-        conn = http.client.HTTPConnection('127.0.0.1', self.http.server_port, timeout=5)
+        conn = http.client.HTTPConnection('127.0.0.1', self.http.server_port, timeout=15)
         hdrs = {'Content-Type': 'application/json', 'X-Jobpipe': '1'} if body is not None else {}
         hdrs.update(headers or {})
-        conn.request('POST' if body is not None else 'GET', path,
-                     body=json.dumps(body) if body is not None else None, headers=hdrs)
-        response = conn.getresponse()
-        status, raw = response.status, response.read()
-        conn.close()
+        try:
+            conn.request('POST' if body is not None else 'GET', path,
+                         body=json.dumps(body) if body is not None else None, headers=hdrs)
+            response = conn.getresponse()
+            status, raw = response.status, response.read()
+        finally:
+            conn.close()
         return status, json.loads(raw) if raw.startswith(b'{') else raw
+
+    def test_website_sources_save_and_preview(self):
+        original = json.loads((self.root / 'config.json').read_text())
+        self.assertEqual(len(self.request('/api/boards')[1]['websites']), 4)
+        self.assertEqual(self.request('/api/websites/save', {'id': 'devjobs', 'enabled': True})[0], 200)
+        saved = json.loads((self.root / 'config.json').read_text())
+        self.assertEqual(saved.pop('website_sources'), ['devjobs'])
+        self.assertEqual(saved, original)
+        self.assertEqual(self.request('/api/websites/save', {'id': 'https://localhost', 'enabled': True})[0], 400)
+        with patch('websites.fetch', side_effect=ValueError('Browser verification required')):
+            status, data = self.request('/api/websites/preview', {'id': 'devjobs'})
+            self.assertEqual(status, 400)
+            self.assertIn('verification', data['error'])
+        self.assertEqual(self.request('/api/websites/save', {'id': 'devjobs', 'enabled': False})[0], 200)
+        self.assertEqual(json.loads((self.root / 'config.json').read_text())['website_sources'], [])
+
+    def test_custom_source_requires_test_and_persists_controls(self):
+        original = json.loads((self.root / 'config.json').read_text())
+        self.assertEqual(self.request('/api/sources/save', {'token': 'unverified'})[0], 400)
+        job = dict(title='Engineer', company='Example', location='Berlin')
+        with patch('websites.fetch_custom', return_value=([job], [])):
+            status, data = self.request('/api/sources/test', {'name': 'My source', 'url': 'https://example.com/jobs'})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request('/api/sources/save', {'token': data['token']})[0], 200)
+        config = json.loads((self.root / 'config.json').read_text())
+        source = config.pop('custom_sources')[0]
+        self.assertEqual(config, original)
+        self.assertEqual(self.request('/api/sources/save', {'token': data['token']})[0], 400)
+        self.assertEqual(self.request('/api/sources/toggle', {'id': source['id'], 'enabled': False})[0], 200)
+        self.assertFalse(self.request('/api/boards')[1]['custom_sources'][0]['enabled'])
+        self.assertEqual(self.request('/api/sources/remove', {'id': source['id']})[0], 200)
+        self.assertEqual(self.request('/api/boards')[1]['custom_sources'], [])
 
     def test_prompted_cv_edits_and_natural_wording(self):
         source = '# Experience\nBuilt APIs.'
@@ -91,6 +125,14 @@ class DashboardTests(unittest.TestCase):
         with patch('codex_login.cancel'), patch('server.subprocess.run') as run:
             run.return_value.returncode = 0
             self.assertEqual(self.request('/api/auth/logout', {})[0], 200)
+
+    def test_installation_checks_do_not_invoke_ai(self):
+        with patch('runtime_support.cli_check', return_value={'ok': False, 'message': 'Missing required CLI feature'}), patch('ai_provider.ask_ai') as ai:
+            status, result = self.request('/api/setup')
+        self.assertEqual(status, 200)
+        self.assertFalse(result['ok'])
+        self.assertIn('Missing required CLI feature', str(result['checks']))
+        ai.assert_not_called()
 
     def test_rescore_preview_and_cv_change_guard(self):
         with server.connect() as con:

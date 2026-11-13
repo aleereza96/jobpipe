@@ -202,6 +202,10 @@ collection, deduplication, and database updates remain ordinary code.
 | Arbeitnow | Built-in collection, enabled in Preferences |
 | Greenhouse company boards | Add a public company board URL in Job sources |
 | Lever company boards | Add a public company board URL, including EU boards |
+| GermanTechJobs | Enable in Job sources; public RSS descriptions |
+| Berlin Startup Jobs | Enable in Job sources; engineering feed and public job details |
+| Next Level Jobs | Enable in Job sources; Germany page, public listings only (paid jobs excluded) |
+| DEVjobs Germany | Enable in Job sources; public search and structured details, subject to browser-verification restrictions |
 | LinkedIn, Glassdoor, Indeed, StepStone | Supported job-alert emails through Gmail |
 | XING, WeAreDevelopers, and other sites | Paste the full description and original link in Add a posting |
 
@@ -212,9 +216,47 @@ Supported board URL formats include:
 - `https://jobs.lever.co/company-slug`
 - `https://jobs.eu.lever.co/company-slug`
 
-Use **Preview listings**, then **Save source**. A general job-search website URL
-is not an automatic connector. For manual entries, provide the description as
+For the four job websites, use the switches in **Job sources** and **Check access**
+for a small live preview. Collection reads one feed or listing page per search, with
+at most 100 feed entries or 30 detail pages, a 90-second detail budget, and a six-hour
+local detail cache in `.source-cache/`. It does not crawl an entire board. Missing
+locations stay unknown and follow your Preferences. Blocked sites are reported in
+the search log and other sources continue. During Docker verification, GermanTechJobs
+and Next Level Jobs imported successfully; DEVjobs and Berlin Startup Jobs returned
+access-verification blocks. Their switches remain available, but automatic imports
+depend on the websites allowing access from your installation. No AI is used during collection; the
+existing deduplication, preference filters and AI budget apply afterward.
+
+For company boards, use **Preview listings**, then **Save source**. Other general
+job-search website URLs are not automatic connectors. For manual entries, provide the description as
 well as the link so the AI has text to evaluate.
+
+### Add sources without changing code
+
+In **Job sources → Custom source**, enter a name and a public HTTPS URL, then
+click **Test import**. Review the sample titles, companies and locations, then
+click **Save source**. Saved custom sources join your next search. Use their
+switches to pause collection or **Remove** to stop using them.
+
+The importer recognizes RSS/Atom feeds and standard `JobPosting` structured data.
+It can follow same-site job links from search pages and feeds, and discover an
+RSS/Atom feed linked from a page. Full RSS content can be imported directly when
+an employer is supplied in a company field or a `Title @ Company` / `Title // Company`
+heading. Other feed entries require an accessible structured job-detail page.
+Search pages that expose only excerpts or external clickout links (such as the
+EnglishJobs search page) may need a dedicated connector. A failed test explains
+that limitation; you can still use **Add a posting** with the full description.
+
+Testing imports a sample without AI scoring or adding jobs to your queue. Saving
+requires a successful test within ten minutes. You can save up to 20 custom
+sources. Collection checks one source page/feed, at most 100 feed entries and
+30 job-detail links within a 90-second detail budget. Details use the same six-hour
+cache as built-in websites. Deduplication, your Preferences and AI limits apply
+to imported jobs. Custom source settings live in `config.json` under
+`custom_sources`; cached descriptions live in `.source-cache/` in your data folder.
+Only public HTTPS destinations are allowed, including redirects; local/private
+network addresses, credentials in URLs and custom ports are rejected. Login,
+browser-verification and paid access are not bypassed.
 
 ## Getting started
 
@@ -246,7 +288,32 @@ docker compose up --build -d
 ```
 
 Start Docker Desktop before running Compose. The initial build needs internet
-access to download Node, Python dependencies, and the Codex CLI.
+access to download Node, Python dependencies, and the Codex CLI. **You do not need
+to install Python, Node.js, npm or Codex on the host for Docker setup.** Use a
+64-bit Intel/AMD or ARM64 machine and Docker Compose v2 (`docker compose`, not
+legacy `docker-compose`). Leave Docker on its native architecture; do not force
+`platform: linux/amd64` on an ARM machine. On Windows, use Linux containers with
+the WSL 2 backend. Clone/download into a writable local folder; avoid cloud-synced
+or network folders for active SQLite data.
+
+The build installs the exact stable Codex release recorded in `CODEX_VERSION`,
+including its platform-specific package. It verifies that the binary runs and
+supports Jobpipe's execution and device-login options, so an incomplete npm
+installation fails during the build rather than at the first CV improvement.
+The container runs as a non-root user. Named Docker volumes hold app data and
+Codex credentials, avoiding host-user ownership differences.
+
+Check startup and installation:
+
+```sh
+docker compose ps
+docker compose logs --tail=60 jobpipe
+docker compose exec jobpipe python runtime_support.py
+```
+
+You can also use **Preferences → Installation checks**. These checks confirm
+local dependencies, writable storage and compatible Codex tooling. They do not
+send CV text, perform AI inference or prove that OpenAI is reachable.
 
 Open [localhost:8787](http://localhost:8787).
 
@@ -284,7 +351,7 @@ docker compose up -d --force-recreate
 ```
 
 Choose Anthropic and a model available to your account in Preferences. The SDK
-is included in the Docker image. Keys are not entered into the dashboard.
+is included in the Docker image and the native requirements. Keys are not entered into the dashboard.
 
 AI access is separate from Jobpipe's MIT license. Provider availability, usage
 limits, and charges depend on your account.
@@ -306,23 +373,59 @@ otherwise scored job. Stop controls preserve completed results.
 
 ### Native setup on macOS, Linux, or WSL 2
 
-Install Python 3.10+ and a supported Node.js/npm environment. Then, from the project folder:
+Install Python 3.10+ and Node.js 22+ with npm. On Debian/Ubuntu, Python's
+`python3-venv` package must also be installed. On macOS, install these prerequisites
+using their official installers or your package manager. On Windows, run these
+steps inside WSL 2 with Linux versions of Python, Node and npm, preferably in
+its Linux filesystem; native Windows Python is
+not supported because job locking uses Unix facilities.
+
+From the downloaded/cloned project folder:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-npm install -g @openai/codex
-codex login
-python server.py
+python3 install.py
+.venv/bin/python server.py
 ```
 
-Open [localhost:8787](http://localhost:8787). For native Anthropic usage, also
-install `anthropic` and export `ANTHROPIC_API_KEY` in the shell before starting.
-Native execution does not automatically load a `.env` file; Compose uses that file.
+The installer creates `.venv/`, installs all Python dependencies, and installs
+the pinned Codex CLI into `.tools/`. It uses a project-local npm cache and needs
+no global npm installation, administrator privileges or changes to shell startup
+files. Re-running it updates the managed tools without replacing your CV,
+preferences, jobs or saved login. Keep the project folder in place after setup;
+if you move it, remove and recreate `.venv/` with the installer because Python
+virtual environments are not portable.
+
+Open [localhost:8787](http://localhost:8787) and sign in through **Preferences →
+Connect Codex**. Native and Docker logins are separate. Docker does not inherit a
+Codex login from your host. Native installations use your own Codex credential
+store unless you set `CODEX_HOME`; Docker uses its dedicated credential volume.
+
+If using only Anthropic, Node/Codex are unnecessary:
+
+```sh
+python3 install.py --provider anthropic
+export ANTHROPIC_API_KEY='your-key'
+.venv/bin/python server.py
+```
+
+Select Anthropic in Preferences before searching. Native execution does not load
+`.env`; export environment settings before starting the server. Compose reads
+`.env` automatically.
+
+To use a separately installed CLI, make it available on the server's `PATH`, or
+export `JOBPIPE_CODEX_COMMAND` with its absolute path. This override also replaces
+an old `codex_command` copied from another machine. Otherwise Jobpipe selects its
+project-local `.tools/bin/codex` first, then `codex` on `PATH`. Login, logout and
+AI calls all use the same resolved executable, even when inference runs in a
+temporary folder. Existing explicit custom commands remain supported.
 
 The server creates missing CV/config files from templates. Set `JOBPIPE_DATA_DIR`
-to an existing writable directory if you want data outside the source folder.
+to a writable directory to keep native data outside the project. Check the native
+installation with `.venv/bin/python runtime_support.py` or the UI's Installation
+checks button. If a shell dies before Python starts with a locale error, select a
+UTF-8 locale installed on that machine; Docker sets a known valid locale. A
+portable native fallback is `LC_ALL=C LANG=C PYTHONUTF8=1 python3 install.py`, and
+then `LC_ALL=C LANG=C PYTHONUTF8=1 .venv/bin/python server.py`.
 
 ### Remote Linux setup
 
@@ -426,19 +529,59 @@ These personal files are excluded from Git and the image build context. OAuth
 files remain local; they are not encrypted by Jobpipe. Protect your computer and
 backups accordingly.
 
-Docker mounts the project folder as `/data`. To back up, stop Jobpipe and copy
-the folder including hidden data files. Treat the Codex volume separately; signing
-in again is an alternative to backing it up.
+New Docker installations keep app data in the Compose `jobpipe_data` volume
+mounted at `/data`, and Codex credentials in `codex_home`. These volumes belong
+to each machine/Compose project; installing on a second device does not copy
+your CV or login. The project folder is mounted read-only at `/legacy` only for
+migration from earlier Jobpipe versions.
+
+On the first start with an empty data volume, Jobpipe imports an existing
+project-folder `config.json`, CV, jobs database, inbox, drafts and Gmail grants.
+The originals are preserved. Once the volume contains saved configuration, later
+starts never import over it. Do not run two installations against the same data
+folder. Check startup logs for the migration message.
+
+To retain a bind-mounted folder instead, set `JOBPIPE_DATA_PATH=.` in `.env` for
+the old layout, or use an absolute path / `./my-data` for a dedicated folder.
+On Linux, this folder must be writable by container UID/GID 1000. The default
+named volume handles ownership automatically. Never copy a whole `.venv/` or
+`.tools/` between machines; reinstall the tools on the destination.
+
+Back up the actual running container's data (works for volumes and bind mounts):
 
 ```sh
 docker compose stop
+# The destination folder must not already exist for this exact command.
+docker compose cp jobpipe:/data ./jobpipe-backup
 docker compose start
+```
+
+Protect the backup: it includes CV content and any Gmail grants. To restore on a
+new installation, first start and stop its container, then copy the backup
+contents in and start it again:
+
+```sh
+docker compose up --build -d
+docker compose stop
+docker compose cp ./jobpipe-backup/. jobpipe:/data/
+# For the default named volume, restore the app user ownership after copying.
+docker compose run --rm --user root --no-deps jobpipe chown -R 1000:1000 /data
+docker compose start
+```
+
+Use the same backup/restore commands from PowerShell, macOS or Linux. Sign in to
+Codex again on the new machine; its separate credentials volume is not included
+in the data backup. If copying into a custom bind mount, ensure the destination
+files are writable by the container user.
+
+```sh
 docker compose logs -f jobpipe
 docker compose down
 ```
 
-These commands preserve the data folder. Avoid `docker compose down -v` unless
-you intend to delete the saved Codex login volume.
+Stopping, restarting and `docker compose down` preserve named volumes. **Do not
+use `docker compose down -v` unless you intend to delete both the app data and
+Codex login volumes.** Deleting the project folder is not a volume backup.
 
 For updates, back up first, pull the source changes, and rebuild:
 
@@ -454,10 +597,16 @@ disposable example database.
 
 Copy `.env.example` to `.env` for Docker overrides. `JOBPIPE_PORT` changes the
 host port; `TZ` changes the container time zone (default UTC). Set `CODEX_VERSION`
-to pin the CLI package version for builds.
+to override the tested exact CLI release for builds; rebuild afterward. Native
+installs use `CODEX_VERSION` through `install.py`. Changing a version setting
+without rebuilding/reinstalling does not replace an already installed binary.
 
 | Problem | What to check |
 | --- | --- |
+| Codex missing or native binary/package error | Re-run `python3 install.py` natively; for Docker use `docker compose build --no-cache jobpipe`, then `docker compose up -d`. Do not omit npm optional dependencies; they contain the platform binary |
+| npm permission errors | Use the native installer, which installs under `.tools/`, rather than `sudo npm install -g` |
+| Data-folder permission denied | Use the default Docker named volume; for a custom Linux bind mount grant UID/GID 1000 access to that data folder |
+| Installation checks pass but sign-in fails | Enable device login in your ChatGPT account/workspace, check network/proxy/TLS access and retry; local installation checks do not validate authentication |
 | Docker cannot connect | Start Docker Desktop or the Docker service |
 | Port 8787 is occupied | Set another `JOBPIPE_PORT` in `.env` and recreate the container |
 | No useful results | Review sources, title/skill terms, location filters, and relevance cutoff |
@@ -466,6 +615,24 @@ to pin the CLI package version for builds.
 | A job looks duplicated | Edited descriptions or different URLs may evade conservative matching |
 | CV edits do not change old scores | Save the CV, then use explicit single-job or batch rescoring |
 | Python fails during locale startup | Use a valid UTF-8 locale; Docker already sets `C.UTF-8` |
+
+### Proxies and corporate certificates
+
+Builds must reach Docker Hub, Debian mirrors, npm and PyPI. Configure the Docker
+Desktop/Engine proxy if downloads fail. Runtime access is separate: optional
+`HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` values in `.env` are passed to the
+container. A proxy bound to the host's `localhost` is not reachable as localhost
+inside Docker; use a host address reachable from the container.
+
+If your organization intercepts TLS, obtain its trusted PEM certificate bundle
+from your administrator. Mount it with a local Compose override and set
+`CODEX_CA_CERTIFICATE` for Codex, `REQUESTS_CA_BUNDLE` for Requests, and
+`SSL_CERT_FILE` for Python's standard TLS client to the mounted path. The bundle
+must contain the required public and organization roots. Native setups can
+export these variables with a local file path. Do not disable TLS verification.
+See the [official Codex authentication and certificate guidance](https://learn.chatgpt.com/docs/auth).
+UI sign-in cannot repair a blocked provider route. Account access and an actual
+AI request still need testing on each installation.
 
 ## Technical overview
 

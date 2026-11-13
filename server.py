@@ -22,8 +22,10 @@ import threading
 import time
 import secrets
 
+import websites
 import gmail_alerts
 import dedup
+import runtime_support
 import codex_login
 from ai_provider import validate_agents
 import cv_source
@@ -40,12 +42,16 @@ RUN = {'state': 'idle', 'started': None, 'finished': None, 'exit_code': None}
 LOGS = deque(maxlen=500)
 PROCESS = None
 GMAIL_PENDING = {}
+SOURCE_PREVIEWS = {}
 RESCORE_PLANS = {}
 GMAIL_SYNC = threading.Lock()
 
 
 def init_data():
     DATA.mkdir(parents=True, exist_ok=True)
+    legacy = os.environ.get('JOBPIPE_LEGACY_DATA_DIR')
+    if runtime_support.migrate_legacy(DATA, Path(legacy).resolve() if legacy else None):
+        print('Imported existing project-folder data into the Docker data volume. Original files were preserved.', flush=True)
     for name in ('config.json', 'cv.md'):
         dest = DATA / name
         if not dest.exists():
@@ -181,12 +187,12 @@ def stop_run():
 def auth_status():
     config = json.loads((DATA / 'config.json').read_text())
     try:
-        result = subprocess.run([config.get('codex_command', 'codex'), 'login', 'status'],
+        result = subprocess.run([runtime_support.codex_command(config), 'login', 'status'],
                                 capture_output=True, text=True, encoding='utf-8', timeout=10)
         ready = result.returncode == 0
         return {'ready': ready, 'message': 'Codex is connected' if ready else 'Connect Codex in Settings before starting a search.'}
-    except FileNotFoundError:
-        return {'ready': False, 'message': 'Codex CLI is not installed. Use the Docker setup or install the CLI.'}
+    except OSError:
+        return {'ready': False, 'message': 'Codex cannot start. Run Installation checks in Preferences; use install.py for native setup or rebuild Docker.'}
     except subprocess.TimeoutExpired:
         return {'ready': False, 'message': 'Codex status check timed out. Try again.'}
 
@@ -268,7 +274,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == '/api/boards':
                 config = json.loads((DATA / 'config.json').read_text())
-                return self.reply(config.get('boards', {}))
+                return self.reply({**config.get('boards', {}), 'custom_sources': config.get('custom_sources', []), 'websites': [
+                    dict(id=key, **value, enabled=key in config.get('website_sources', []))
+                    for key, value in websites.SITES.items()]})
             if parsed.path == '/api/gmail':
                 return self.reply(gmail_alerts.status(DATA))
             if parsed.path == '/api/gmail/callback':
@@ -304,6 +312,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(snapshot)
             if parsed.path == '/api/auth/login':
                 return self.reply(codex_login.snapshot())
+            if parsed.path == '/api/setup':
+                config = json.loads((DATA / 'config.json').read_text())
+                return self.reply(runtime_support.diagnostics(DATA, config))
             if parsed.path == '/api/auth':
                 return self.reply(auth_status())
             if parsed.path == '/api/settings':
@@ -421,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
                     if RUN['state'] in ('running', 'stopping'):
                         raise ValueError('Wait for the search to finish before changing sign-in.')
                     config = json.loads((DATA / 'config.json').read_text())
-                    command = config.get('codex_command', 'codex')
+                    command = runtime_support.codex_command(config)
                     if path == '/api/auth/login':
                         return self.reply(codex_login.start(command, APP, lambda: auth_status()['ready']), 202)
                     codex_login.cancel()
@@ -483,6 +494,74 @@ class Handler(BaseHTTPRequestHandler):
                              target.read_text(encoding='utf-8'))
                 return self.reply(pdf, content_type='application/pdf',
                                   filename=f'tailored-cv-{name}.pdf')
+            if path in ('/api/sources/test', '/api/sources/save', '/api/sources/toggle', '/api/sources/remove'):
+                if path.endswith('/test'):
+                    spec = websites.custom_spec(body.get('name'), body.get('url'))
+                    try:
+                        jobs, warnings = websites.fetch_custom(spec, DATA / '.source-cache', limit=3)
+                    except Exception as error:
+                        raise ValueError(f'Import test failed: {error}') from None
+                    token = secrets.token_urlsafe(24)
+                    with LOCK:
+                        now = time.monotonic()
+                        for key in list(SOURCE_PREVIEWS):
+                            if SOURCE_PREVIEWS[key][1] < now:
+                                del SOURCE_PREVIEWS[key]
+                        if len(SOURCE_PREVIEWS) >= 50:
+                            SOURCE_PREVIEWS.pop(next(iter(SOURCE_PREVIEWS)))
+                        SOURCE_PREVIEWS[token] = (spec, now + 600)
+                    return self.reply({'token': token, 'count': len(jobs), 'warnings': warnings,
+                        'jobs': [{'title': j['title'], 'company': j['company'], 'location': j['location']} for j in jobs[:10]]})
+                with LOCK:
+                    config = json.loads((DATA / 'config.json').read_text())
+                    selected = config.get('custom_sources', [])
+                    if path.endswith('/save'):
+                        token = body.get('token')
+                        preview = SOURCE_PREVIEWS.get(token) if isinstance(token, str) else None
+                        if not preview or preview[1] < time.monotonic():
+                            raise ValueError('Test this source again before saving.')
+                        spec = preview[0]
+                        if len(selected) >= 20 and not any(s['id'] == spec['id'] for s in selected):
+                            raise ValueError('You can save up to 20 custom sources.')
+                        selected = [s for s in selected if s['id'] != spec['id']] + [spec]
+                    else:
+                        source_id = body.get('id')
+                        if not any(s['id'] == source_id for s in selected):
+                            raise ValueError('Source not found.')
+                        if path.endswith('/remove'):
+                            selected = [s for s in selected if s['id'] != source_id]
+                        else:
+                            if type(body.get('enabled')) is not bool:
+                                raise ValueError('Choose whether to enable this source.')
+                            selected = [dict(s, enabled=body['enabled']) if s['id'] == source_id else s for s in selected]
+                    config['custom_sources'] = selected
+                    atomic_write(DATA / 'config.json', json.dumps(config, indent=2) + '\n')
+                    if path.endswith('/save'):
+                        SOURCE_PREVIEWS.pop(token, None)
+                return self.reply({'ok': True})
+            if path in ('/api/websites/save', '/api/websites/preview'):
+                site = body.get('id')
+                if not isinstance(site, str) or site not in websites.SITES:
+                    raise ValueError('Choose a supported website.')
+                if path.endswith('/save'):
+                    if type(body.get('enabled')) is not bool:
+                        raise ValueError('Choose whether to enable this source.')
+                    with LOCK:
+                        config = json.loads((DATA / 'config.json').read_text())
+                        selected = set(config.get('website_sources', []))
+                        if body['enabled']:
+                            selected.add(site)
+                        else:
+                            selected.discard(site)
+                        config['website_sources'] = sorted(selected)
+                        atomic_write(DATA / 'config.json', json.dumps(config, indent=2) + '\n')
+                    return self.reply({'ok': True})
+                try:
+                    jobs, warnings = websites.fetch(site, DATA / '.source-cache', limit=3)
+                except Exception as error:
+                    raise ValueError(f'Could not import: {error}') from None
+                return self.reply({'count': len(jobs), 'warnings': warnings,
+                    'jobs': [{'title': j['title'], 'location': j['location']} for j in jobs[:10]]})
             if path in ('/api/boards/preview', '/api/boards/save', '/api/boards/remove'):
                 link = body.get('url')
                 if not isinstance(link, str) or len(link) > 2048:
@@ -620,7 +699,10 @@ if __name__ == '__main__':
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8787)
     args = parser.parse_args()
-    init_data()
+    try:
+        init_data()
+    except (OSError, sqlite3.Error, ValueError) as error:
+        parser.exit(1, f'Jobpipe could not initialize its data folder: {error}\nUse the default Docker data volume, or set JOBPIPE_DATA_DIR to a writable folder.\n')
     server = LocalServer((args.host, args.port), Handler)
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     print(f'Jobpipe dashboard: http://localhost:{args.port}', flush=True)

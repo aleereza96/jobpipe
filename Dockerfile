@@ -1,5 +1,6 @@
 FROM node:22-bookworm-slim
-ARG CODEX_VERSION=latest
+ARG CODEX_VERSION
+COPY CODEX_VERSION /tmp/jobpipe-codex-version
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONUTF8=1 PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 JOBPIPE_DATA_DIR=/data \
@@ -8,18 +9,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv ca-certificates git tini tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
-    && npm install --global "@openai/codex@${CODEX_VERSION}" \
+    && npm install --global --include=optional "@openai/codex@${CODEX_VERSION:-$(cat /tmp/jobpipe-codex-version)}" \
+    && codex --version \
     && npm cache clean --force
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt 'anthropic>=0.40,<1' \
+RUN pip install --no-cache-dir -r requirements.txt \
     && mkdir -p /data /home/node/.codex \
     && printf 'cli_auth_credentials_store = "file"\n' > /home/node/.codex/config.toml \
     && chown -R node:node /data /home/node/.codex
-COPY --chown=node:node server.py jobpipe.py sources.py ai_provider.py gmail_alerts.py cv_pdf.py cv_source.py cv_review.py search_rank.py dedup.py codex_login.py ./
+COPY --chown=node:node server.py jobpipe.py sources.py websites.py ai_provider.py gmail_alerts.py cv_pdf.py cv_source.py cv_review.py search_rank.py dedup.py codex_login.py runtime_support.py install.py CODEX_VERSION ./
 COPY --chown=node:node web/ ./web/
 COPY --chown=node:node defaults/ ./defaults/
 USER node
+RUN python -c "from runtime_support import cli_check; result = cli_check({}); print(result['message']); assert result['ok']"
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=3)" || exit 1

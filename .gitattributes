@@ -1,0 +1,2 @@
+# Keep version files and scripts usable after Windows Git checkouts.
+* text=auto eol=lf

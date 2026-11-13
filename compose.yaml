@@ -3,18 +3,25 @@ services:
     build:
       context: .
       args:
-        CODEX_VERSION: ${CODEX_VERSION:-latest}
+        CODEX_VERSION: ${CODEX_VERSION:-}
     ports:
       - "127.0.0.1:${JOBPIPE_PORT:-8787}:8787"
     volumes:
-      - .:/data
+      - ${JOBPIPE_DATA_PATH:-jobpipe_data}:/data
+      - .:/legacy:ro
       - codex_home:/home/node/.codex
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GMAIL_ADDRESS: ${GMAIL_ADDRESS:-}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
       TZ: ${TZ:-UTC}
+      JOBPIPE_LEGACY_DATA_DIR: /legacy
+      JOBPIPE_CODEX_COMMAND: ${JOBPIPE_CODEX_COMMAND:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
     restart: unless-stopped
     stop_grace_period: 20s
 volumes:
+  jobpipe_data:
   codex_home:
