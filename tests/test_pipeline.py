@@ -52,6 +52,88 @@ class CountryAndLanguageTests(unittest.TestCase):
             ai.assert_not_called()
 
 
+class PreciseScreeningTests(unittest.TestCase):
+    def config(self, **changes):
+        return dict(dict(jp.CFG, role_keywords=['software developer', 'frontend engineer'],
+                         include_keywords=['React', 'TypeScript', 'full-stack', 'fullstack'],
+                         exclude_keywords=['ausbildung', 'internship', 'unpaid', 'security clearance'],
+                         location_keywords=['Berlin'], target_countries=[], required_keywords=[],
+                         sponsorship_required=False, english_only=False, exclude_german_required=False,
+                         exclude_dutch_required=False, unknown_policy='review', current_country='',
+                         authorized_countries=[], relocation_required=False, min_relevance=4), **changes)
+
+    def test_equivalent_titles_without_unrelated_or_seniority_expansion(self):
+        config = self.config()
+        for title in ('Senior TypeScript Developer', 'Senior Software Engineer', 'Front End Engineer',
+                      'Frontend Developer', 'Frontend Ontwikkelaar', 'Full-Stack Engineer', 'Senior Product Engineer (TypeScript, Full-Stack)'):
+            self.assertIsNone(search_rank.screen(dict(title=title, description='Requirements: React and TypeScript.', location='Berlin'), config)[0], title)
+        for title in ('Civil Engineer', 'Recruiter', 'Engineering Manager', 'Sales Engineer'):
+            self.assertEqual(search_rank.screen(dict(title=title, description='Our company uses React.', location='Berlin'), config)[0], 'title outside preferred roles')
+        self.assertTrue(search_rank.role_matches('Engineer, Front-End', self.config(role_keywords=['frontend developer'])))
+        self.assertTrue(search_rank.role_matches('Frontend-Entwickler', self.config(role_keywords=['frontend developer'])))
+        self.assertFalse(search_rank.role_matches('Backend Engineer', self.config(role_keywords=['frontend developer'])))
+        self.assertFalse(search_rank.role_matches('Junior TypeScript Developer', self.config(role_keywords=['senior software developer'])))
+        self.assertEqual(len(search_rank.skill_matches('Full stack', ['full-stack', 'fullstack', 'full stack'])), 1)
+        self.assertFalse(search_rank.skill_matches('Join our next generation team', ['next']))
+
+    def test_job_type_exclusion_does_not_reject_education_or_leave(self):
+        config = self.config()
+        job = dict(title='Software Engineer', description='Abgeschlossene Ausbildung oder Studium. React required. Unpaid leave available.', location='Berlin')
+        self.assertIsNone(search_rank.screen(job, config)[0])
+        for title in ('Ausbildung Softwareentwicklung', 'Software Engineering Internship', 'Unpaid Frontend Developer'):
+            self.assertIn('excluded job type', search_rank.excluded_reason(dict(job, title=title), config))
+        self.assertIn('excluded job type', search_rank.excluded_reason(dict(job, employment_type='INTERN'), config))
+        self.assertIsNone(search_rank.excluded_reason(dict(job, description='No security clearance required.'), config))
+        self.assertIn('security clearance', search_rank.excluded_reason(dict(job, description='Must obtain security clearance.'), config))
+
+    def test_residency_and_declared_authorization_are_separate(self):
+        job = dict(title='Engineer', description='Applicants must already be based in the Netherlands. Existing right to work in the Netherlands is required.')
+        self.assertEqual(search_rank.eligibility(job, self.config())['status'], 'needs checking')
+        self.assertEqual(search_rank.eligibility(job, self.config(current_country='Germany'))['status'], 'excluded')
+        self.assertEqual(search_rank.eligibility(job, self.config(current_country='Netherlands'))['status'], 'needs checking')
+        self.assertEqual(search_rank.eligibility(job, self.config(current_country='NL', authorized_countries=['Netherlands']))['status'], 'eligible')
+        self.assertEqual(search_rank.eligibility(dict(job, description='Our company is already based in the Netherlands.'), self.config())['status'], 'eligible')
+        self.assertEqual(search_rank.eligibility(dict(job, description='We offer visa sponsorship. Relocation support is provided.'), self.config(sponsorship_required=True, relocation_required=True))['status'], 'eligible')
+        self.assertEqual(search_rank.eligibility(dict(job, description='No relocation support is offered.'), self.config(relocation_required=True))['status'], 'excluded')
+
+    def test_high_score_cannot_shortlist_unknown_or_conflicting_residency(self):
+        job = dict(id='residency', title='Frontend engineer', company='Example', url='https://example.com', location='Amsterdam', description='Applicants must already be based in the Netherlands. React required.')
+        with patch.dict(jp.CFG, self.config()), patch.object(jp, 'ask', return_value=json.dumps(analysis())), patch.object(jp, 'ask_ai', return_value='{"evidence": []}'), patch.object(jp, 'tailor') as draft:
+            self.assertEqual(jp.process('CV facts', job)[2], 'needs_review')
+            draft.assert_not_called()
+        with patch.dict(jp.CFG, self.config(current_country='Germany')), patch.object(jp, 'ask') as ai:
+            self.assertIn('eligibility conflict', jp.prefilter(job)[0])
+            ai.assert_not_called()
+
+    def test_reconsider_recovers_only_local_rejections_and_keeps_dedup(self):
+        import dedup
+        con = sqlite3.connect(':memory:')
+        con.execute('CREATE TABLE jobs(id TEXT PRIMARY KEY,title,company,location,url,score,status,analysis,found_at)')
+        con.execute('CREATE TABLE feedback(job_id TEXT PRIMARY KEY,decision)')
+        candidates = []
+        for identity, title, status, analysis_value in (
+            ('recover', 'TypeScript Developer', 'skipped', {'skip': 'title outside preferred roles'}),
+            ('reject', 'Sales Manager', 'skipped', {'skip': 'title outside preferred roles'}),
+            ('applied', 'TypeScript Developer', 'applied', {'score': 85}),
+            ('ai-scored', 'TypeScript Developer', 'skipped', {'score': 0, 'scored_at': 'earlier', 'skip': 'salary'}),
+            ('dismissed', 'TypeScript Developer', 'skipped', {'skip': 'title outside preferred roles'})):
+            job = dict(id=identity,title=title,company='Example',location='Berlin',url='https://example.com/'+identity,description='Requirements: React and TypeScript. ' * 10)
+            candidates.append(job)
+            con.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)',(identity,title,'Example','Berlin',job['url'],0,status,json.dumps(analysis_value),'original-date'))
+        con.execute("INSERT INTO feedback VALUES('dismissed','dismissed')")
+        dedup.collect(con, candidates)
+        protected = con.execute("SELECT * FROM jobs WHERE id IN ('applied','ai-scored','dismissed') ORDER BY id").fetchall()
+        result = search_rank.reconsider(con, self.config())
+        self.assertEqual((result['checked'],result['requeued'],result['still_rejected']), (2,1,1))
+        self.assertEqual(con.execute("SELECT * FROM jobs WHERE id IN ('applied','ai-scored','dismissed') ORDER BY id").fetchall(), protected)
+        self.assertEqual(search_rank.reconsider(con, self.config())['checked'], 0)
+        recovered, _ = dedup.collect(con, [json.loads(con.execute("SELECT payload FROM candidates WHERE id='recover'").fetchone()[0])])
+        self.assertEqual([j['id'] for j in recovered], ['recover'])
+        con.execute('INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?)',('recover','TypeScript Developer','Example','Berlin','https://example.com/recover',85,'shortlisted','{"score":85}','new-date'))
+        self.assertEqual(dedup.collect(con, recovered)[0], [])
+        con.close()
+
+
 def analysis(**changes):
     value = dict(score=85, matches=['Python'], gaps=[], german_required=False,
                  visa_or_relocation_signal='yes', seniority_fit='ok',

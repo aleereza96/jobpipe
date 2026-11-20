@@ -371,6 +371,60 @@ uses scoring and evidence calls; a qualifying job also uses a drafting call.
 Optional CV reviews make additional calls. Evidence failure does not discard an
 otherwise scored job. Stop controls preserve completed results.
 
+### How screening and the search breakdown work
+
+Collected references are broad source results, not a count of compatible jobs.
+**Search activity → Search breakdown** shows unique unprocessed candidates,
+local rejections by reason, candidates passing filters, the selection sent to AI,
+remaining candidates deferred by your budget, completed AI scores, failures and
+eligibility reviews. The most recently recorded breakdown survives restarts.
+Repeated source references and already processed references can overlap; those
+reference counts should not be added together as separate jobs.
+
+Preferred titles recognize developer/engineer equivalents, front-end/front end,
+full-stack/full stack, German/Dutch developer wording and title word order. A
+saved generic Software Developer preference also permits software-family and
+selected-stack developer titles, including Product Engineer and TypeScript
+Developer. Specific frontend preferences remain narrower, and explicit seniority
+terms are preserved. Skill aliases cover common JS/TS and framework spellings;
+alternate full-stack spellings count once. Title and requirement matches rank
+above incidental body mentions. Roles, stack terms, cutoff and AI budget still
+come from your Preferences.
+
+Job-type exclusions such as internship, Werkstudent, Ausbildung and unpaid apply
+to titles, supplied employment-type fields and explicit role statements. An
+education requirement mentioning an Ausbildung or a benefit mentioning unpaid
+leave does not turn a paid software role into an excluded job type. Other custom
+excluded terms continue to match posting text; explicit negation/optional wording
+is handled for security clearance. These are local rules, not extra AI calls.
+
+After filtering rules or relevant saved Preferences change, the next search
+rechecks previous **local** rejections using saved/freshly collected descriptions.
+You can also click **Recheck rejected jobs · no AI** to prepare candidates now.
+Newly passing jobs move into the unscored backlog and compete under the same AI
+budget on the next search. Still-rejected jobs get the new screening signature.
+Applied jobs, completed AI analyses, manual dismissals and hidden duplicates are
+not automatically reanalyzed. Old records lacking descriptions need fresh source
+data; they are reported as unavailable rather than guessed. CV changes still use
+the separate explicit rescoring flow.
+
+In **Preferences → Requirements and review**, optionally declare your current
+country, countries where you already have work authorization, and whether you
+need employer-supported relocation. These fields are never inferred or written
+from your CV. Explicit existing-residency requirements for Germany/Netherlands
+are compared with the declared country. Living in a country is not treated as
+proof of work authorization. Sponsorship/relocation refusals conflict only when
+you require that support; affirmative statements supply evidence, while omissions
+remain unknown. Unknown information follows your saved review/exclusion choices.
+
+An AI fit score is separate from eligibility. Explicit conflicts cannot become
+shortlisted. High-fit jobs with unresolved requirements enter **Needs eligibility
+review**, without an application-drafting call. They are included in the focused
+review queue and show requirement evidence. Update your declared profile and
+explicitly rescore a saved job to refresh its checks. Applied history is preserved.
+Detection is conservative and cannot establish legal work rights or catch every
+way an employer might phrase a restriction; verify the original posting.
+
 ### Search Germany and the Netherlands
 
 In **Preferences → Countries and locations**, select **Germany**, **Netherlands**,

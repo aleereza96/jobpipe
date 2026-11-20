@@ -36,5 +36,8 @@
   "target_countries": [],
   "english_only": false,
   "exclude_dutch_required": false,
-  "language_unknown_policy": "review"
+  "language_unknown_policy": "review",
+  "current_country": "",
+  "authorized_countries": [],
+  "relocation_required": false
 }

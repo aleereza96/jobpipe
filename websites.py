@@ -142,7 +142,7 @@ def normalize(post, url, site):
     return dict(id=site + '-' + hashlib.sha256(url.encode()).hexdigest()[:24],
                 title=title, company=company, description=description,
                 location='; '.join(dict.fromkeys(x for x in names if x)),
-                url=url, posted_at=post.get('datePosted'))
+                url=url, posted_at=post.get('datePosted'), employment_type=post.get('employmentType', ''))
 
 
 def detail(url, site, cache, base=None, reader=None):

@@ -200,6 +200,34 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(self.request('/api/jobs?review=1')[1]['total'], 1)
         self.assertEqual(self.request('/api/jobs?review=1')[1]['limit'], 10)
 
+    def test_local_recheck_queues_without_ai_and_honors_running_search(self):
+        job = dict(id='recover', title='TypeScript Developer', company='Example',
+                   location='Berlin', url='https://example.com/recover', description='React and TypeScript services.')
+        with server.connect() as con:
+            con.execute("INSERT INTO jobs(id,title,score,status,analysis) VALUES('recover','TypeScript Developer',0,'skipped',?)", (json.dumps({'skip':'title outside preferred roles'}),))
+            con.execute('INSERT INTO job_sources VALUES(?,?,?,?,?)', ('recover','recover',job['url'],None,json.dumps(job)))
+        with patch('ai_provider.ask_ai') as ai:
+            status, result = self.request('/api/search/recheck', {})
+            self.assertEqual(status, 200)
+            self.assertEqual(result['requeued'], 1)
+            ai.assert_not_called()
+        self.assertEqual(self.request('/api/stats')[1]['pending'], 1)
+        self.assertEqual(self.request('/api/search/recheck', {})[1]['checked'], 0)
+        server.RUN['state'] = 'running'
+        self.assertEqual(self.request('/api/search/recheck', {})[0], 400)
+        server.RUN['state'] = 'idle'
+
+    def test_eligibility_review_filter_and_profile_validation(self):
+        with server.connect() as con:
+            for identity, status in (('ready','shortlisted'),('unknown','needs_review'),('sent','applied')):
+                con.execute('INSERT INTO jobs(id,title,status,score) VALUES(?,?,?,85)',(identity,'Engineer',status))
+        self.assertEqual(self.request('/api/jobs?status=needs_review')[1]['total'], 1)
+        focused = self.request('/api/jobs?status=shortlisted&review=1')[1]
+        self.assertEqual({j['id'] for j in focused['jobs']}, {'ready','unknown'})
+        self.assertEqual(self.request('/api/settings', {'config': {'current_country':'Iran','authorized_countries':['NL'],'relocation_required':True}})[0], 200)
+        for invalid in ({'current_country':'x'*81},{'authorized_countries':'NL'},{'relocation_required':'yes'}):
+            self.assertEqual(self.request('/api/settings', {'config':invalid})[0], 400)
+
     def test_board_preview_save_and_remove(self):
         url = 'https://jobs.lever.co/example-board'
         listings = [{'title': 'Software Engineer', 'location': 'Berlin'}]
@@ -330,6 +358,10 @@ Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text(text)
         result = self.request('/api/run')[1]
         self.assertEqual(result['state'], 'completed', result)
         self.assertEqual(result['counts'], {'found': 4, 'passed': 2, 'sent': 1, 'shortlisted': 1})
+        funnel = result['funnel']
+        self.assertEqual((funnel['unique_candidates'],funnel['passed'],funnel['selected_for_ai'],funnel['deferred'],funnel['scored'],funnel['failed']), (4,2,1,1,1,0))
+        self.assertEqual(sum(funnel['rejected'].values()), 2)
+        self.assertTrue((self.root / 'last-search.json').exists())
         jobs = self.request('/api/jobs?status=shortlisted')[1]['jobs']
         self.assertEqual([job['title'] for job in jobs], ['Python engineer in Berlin'])
         self.assertTrue(list((self.root / 'output').glob('*/application.md')))

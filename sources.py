@@ -60,6 +60,7 @@ def lever(slug, loc_keywords):
                             "company": slug, "location": loc,
                             "url": j.get("hostedUrl", ""),
                             "posted_at": j.get("createdAt"),
+                            "employment_type": (j.get("categories") or {}).get("commitment", ""),
                             "description": clean(j.get("descriptionPlain")
                                                  or j.get("description"))})
         return out

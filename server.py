@@ -91,9 +91,9 @@ def validate_config(changes):
     numeric = {'min_score': (0, 100), 'min_salary_eur': (0, 1000000),
                'review_limit': (1, 100), 'min_relevance': (0, 23), 'max_llm_jobs_per_run': (1, 200), 'workers': (1, 8),
                'ai_timeout_seconds': (10, 1800), 'arbeitnow_pages': (1, 30)}
-    arrays = {'required_keywords', 'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords'}
-    strings = {'candidate_note', 'anthropic_model'}
-    allowed = set(numeric) | arrays | strings | {'agents', 'agent_assignments', 'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'target_countries', 'english_only', 'exclude_dutch_required', 'language_unknown_policy', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
+    arrays = {'required_keywords', 'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords', 'authorized_countries'}
+    strings = {'candidate_note', 'anthropic_model', 'current_country'}
+    allowed = set(numeric) | arrays | strings | {'agents', 'agent_assignments', 'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'target_countries', 'english_only', 'exclude_dutch_required', 'relocation_required', 'language_unknown_policy', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unrecognized settings')
     for key, value in changes.items():
@@ -104,13 +104,15 @@ def validate_config(changes):
         elif key in arrays:
             if not isinstance(value, list) or len(value) > 100 or any(not isinstance(x, str) or not x.strip() or len(x) > 200 for x in value):
                 raise ValueError(f'{key} must contain nonempty keywords')
+        elif key == 'current_country' and (not isinstance(value, str) or len(value) > 80):
+            raise ValueError('Enter your current country using at most 80 characters.')
         elif key in strings:
             if not isinstance(value, str) or len(value) > 6000:
                 raise ValueError(f'Invalid {key}')
         elif key == 'target_countries':
             if not isinstance(value, list) or any(not isinstance(code, str) or code not in search_rank.COUNTRIES for code in value) or len(value) != len(set(value)):
                 raise ValueError('Choose supported countries without duplicates.')
-        elif key in ('english_only', 'exclude_dutch_required') and type(value) is not bool:
+        elif key in ('english_only', 'exclude_dutch_required', 'relocation_required') and type(value) is not bool:
             raise ValueError('Invalid language preference.')
         elif key == 'language_unknown_policy' and value not in ('review', 'exclude'):
             raise ValueError('Choose how to handle unconfirmed English.')
@@ -144,8 +146,17 @@ def watch(process):
             with LOCK:
                 if line.startswith('DEDUP_COUNTS '):
                     RUN['dedup'] = json.loads(line[len('DEDUP_COUNTS '):])
-                if line.startswith('SEARCH_COUNTS '):
+                elif line.startswith('SEARCH_FUNNEL '):
+                    RUN['funnel'] = json.loads(line[len('SEARCH_FUNNEL '):])
+                    try:
+                        atomic_write(DATA / 'last-search.json', json.dumps(RUN['funnel']))
+                    except OSError:
+                        LOGS.append('Could not save the search breakdown; current progress is still shown.')
+                elif line.startswith('SEARCH_COUNTS '):
                     RUN['counts'] = json.loads(line[len('SEARCH_COUNTS '):])
+                elif line.startswith('RECHECK_COUNTS '):
+                    result = json.loads(line[len('RECHECK_COUNTS '):])
+                    LOGS.append(f"Rechecked {result['checked']} local rejections; {result['requeued']} recovered for scoring.")
                 else:
                     LOGS.append(line.rstrip()[:2000])
         code = process.wait()
@@ -175,7 +186,7 @@ def start_run(rescore_request=None):
                                    stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                    start_new_session=True)
         LOGS.clear()
-        RUN.update(mode='rescore' if rescore_request else 'search', dedup=None, counts=None, state='running', started=datetime.now().isoformat(), finished=None, exit_code=None)
+        RUN.update(mode='rescore' if rescore_request else 'search', dedup=None, counts=None, funnel=None, state='running', started=datetime.now().isoformat(), finished=None, exit_code=None)
         threading.Thread(target=watch, args=(PROCESS,), daemon=True).start()
 
 
@@ -207,7 +218,7 @@ def auth_status():
 
 def job_rows(query):
     conditions, params = ["id NOT IN (SELECT duplicate_id FROM duplicate_links)", "id NOT IN (SELECT job_id FROM feedback WHERE decision='dismissed')"], []
-    if query.get('status', [''])[0] in ('shortlisted', 'applied', 'skipped', 'low_score'):
+    if query.get('review', ['0'])[0] != '1' and query.get('status', [''])[0] in ('shortlisted', 'applied', 'skipped', 'low_score', 'needs_review'):
         conditions.append('status=?'); params.append(query['status'][0])
     if query.get('due', [''])[0] == '1':
         conditions.append("status='applied' AND follow_up_at<=?")
@@ -216,6 +227,8 @@ def job_rows(query):
     if search:
         conditions.append('(title LIKE ? OR company LIKE ? OR location LIKE ?)')
         params.extend(['%' + search + '%'] * 3)
+    if query.get('review', ['0'])[0] == '1':
+        conditions.append("status IN ('shortlisted','needs_review')")
     where = ' WHERE ' + ' AND '.join(conditions) if conditions else ''
     offset = max(0, min(100000, int(query.get('offset', ['0'])[0])))
     config = json.loads((DATA / 'config.json').read_text())
@@ -314,9 +327,14 @@ class Handler(BaseHTTPRequestHandler):
                 with connect() as con:
                     counts = {r[0]: r[1] for r in con.execute('SELECT status,count(*) FROM jobs GROUP BY status')}
                     due = con.execute("SELECT count(*) FROM jobs WHERE status='applied' AND follow_up_at<=?", (datetime.now().isoformat(),)).fetchone()[0]
-                return self.reply({'counts': counts, 'due': due, 'total': sum(counts.values())})
+                with connect() as con:
+                    pending = con.execute('SELECT count(*) FROM candidates').fetchone()[0] if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidates'").fetchone() else 0
+                return self.reply({'counts': counts, 'due': due, 'total': sum(counts.values()), 'pending': pending})
             if parsed.path == '/api/run':
                 with LOCK: snapshot = dict(RUN, logs=list(LOGS))
+                if snapshot['state'] == 'idle' and (DATA / 'last-search.json').exists():
+                    snapshot['funnel'] = json.loads((DATA / 'last-search.json').read_text())
+                    snapshot['funnel_saved'] = True
                 return self.reply(snapshot)
             if parsed.path == '/api/auth/login':
                 return self.reply(codex_login.snapshot())
@@ -368,6 +386,20 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(size))
             if not isinstance(body, dict): raise ValueError('Expected an object')
             path = urlsplit(self.path).path
+            if path == '/api/search/recheck':
+                import fcntl
+                with LOCK:
+                    if RUN['state'] in ('running', 'stopping'):
+                        raise ValueError('Wait for the active search to finish before rechecking filters.')
+                    with (DATA / '.search.lock').open('a') as search_lock:
+                        try:
+                            fcntl.flock(search_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except BlockingIOError:
+                            raise ValueError('Another search is using this data folder.') from None
+                        config = json.loads((DATA / 'config.json').read_text())
+                        with connect() as con:
+                            result = search_rank.reconsider(con, config)
+                return self.reply(result)
             if path == '/api/feedback':
                 job_id, decision, reason = body.get('id'), body.get('decision'), body.get('reason', '')
                 if not isinstance(job_id, str) or decision not in ('interested', 'dismissed', 'clear') or not isinstance(reason, str) or len(reason) > 500:

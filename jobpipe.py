@@ -122,6 +122,7 @@ def fetch_arbeitnow():
                 "url": j.get("url") or "",
                 "description": sources.clean(j.get("description")),
                 "posted_at": j.get("created_at"),
+                "employment_type": ' '.join(x for x in j.get('job_types', []) if isinstance(x, str)),
             })
     return jobs
 
@@ -176,13 +177,7 @@ def fetch_inbox():
 
 # ---------- 2. filter ----------
 def prefilter(j):
-    language = search_rank.language_reason(j, CFG)
-    if language:
-        return language, 0
-    eligibility = search_rank.eligibility(j, CFG, include_language=False)
-    if eligibility["status"] == "excluded" or (eligibility["status"] == "needs checking" and CFG.get("unknown_policy") == "exclude"):
-        return "eligibility requirements not satisfied", 0
-    return search_rank.evaluate(j, CFG)
+    return search_rank.screen(j, CFG)
 
 
 def visa_hint(j):
@@ -192,6 +187,10 @@ def visa_hint(j):
 def skip_reason(a):
     if (CFG.get("exclude_german_required", False) or CFG.get("english_only")) and a.get("german_required"):
         return "German required"
+    if a.get('eligibility', {}).get('status') == 'excluded':
+        return 'Eligibility conflict'
+    if CFG.get('unknown_policy') == 'exclude' and any(c.get('assessment') == 'unknown' and c.get('requirement') != 'English working language' for c in a.get('eligibility', {}).get('checks', [])):
+        return 'Eligibility information unconfirmed'
     if a.get("language_rejection"):
         return a["language_rejection"]
     sal = a.get("salary_eur_yearly_max")
@@ -267,6 +266,8 @@ def process(cv, j):
         if reason:
             return j, a, "skipped", reason
         if a["score"] >= CFG["min_score"]:
+            if a.get('eligibility', {}).get('status') == 'needs checking':
+                return j, a, 'needs_review', None
             tailor(cv, j, a)
             return j, a, "shortlisted", None
         return j, a, "low_score", None
@@ -373,6 +374,17 @@ def _run_locked():
             print(f"  Gmail: {error}")
     jobs += gmail_alerts.postings(ROOT)
     jobs += [json.loads(row[0]) for row in con.execute("SELECT payload FROM candidates")]
+    # Persist fresh source descriptions before rechecking historical local skips.
+    dedup.collect(con, jobs)
+    reconsidered = search_rank.reconsider(con, CFG)
+    con.commit()
+    print('RECHECK_COUNTS ' + json.dumps(reconsidered), flush=True)
+    collected_ids = {job['id'] for job in jobs}
+    for row in con.execute('SELECT payload FROM candidates'):
+        candidate = json.loads(row[0])
+        if candidate['id'] not in collected_ids:
+            jobs.append(candidate)
+            collected_ids.add(candidate['id'])
     new, duplicate_counts = dedup.collect(con, jobs)
     for job in new:
         con.execute("INSERT OR REPLACE INTO candidates VALUES(?,?)", (job["id"], json.dumps(job)))
@@ -380,16 +392,25 @@ def _run_locked():
     print(f"{len(jobs)} postings, {len(new)} new")
 
     ranked = []
+    rejected = {}
+    signature = search_rank.screening_signature(CFG)
     for j in new:
         reason, rank = prefilter(j)
         if reason:
-            save(con, j, 0, "skipped", {"skip": reason})
+            rejected[reason] = rejected.get(reason, 0) + 1
+            save(con, j, 0, "skipped", search_rank.local_analysis(j, CFG, reason))
         else:
             ranked.append((rank, j))
     ranked.sort(key=lambda candidate: candidate[0], reverse=True)
     todo = [job for _, job in ranked[:CFG["max_llm_jobs_per_run"]]]
     counts = {"found": len(jobs), "passed": len(ranked), "sent": 0, "shortlisted": 0}
+    funnel = {'screening_signature': signature, 'collected': len(jobs), 'unique_candidates': len(new),
+              'previously_processed': duplicate_counts['reused'], 'duplicate_references': duplicate_counts['duplicates'],
+              'rejected': rejected, 'passed': len(ranked), 'ai_budget': CFG['max_llm_jobs_per_run'],
+              'selected_for_ai': len(todo), 'deferred': max(0, len(ranked)-len(todo)),
+              'scored': 0, 'failed': 0, 'needs_review': 0, 'reconsidered': reconsidered}
     print("DEDUP_COUNTS " + json.dumps(duplicate_counts), flush=True)
+    print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
     print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
 
     def score_selected(job):
@@ -405,7 +426,13 @@ def _run_locked():
         for j, a, status, reason in pool.map(score_selected, todo):
             if status is None:
                 failed += 1
+                funnel['failed'] += 1
+                print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
                 continue
+            funnel['scored'] += 1
+            if status == 'needs_review':
+                funnel['needs_review'] += 1
+            print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
             if reason:
                 a["skip"] = reason
             save(con, j, a["score"], status, a)
