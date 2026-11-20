@@ -1,4 +1,6 @@
 import json
+import io
+import time
 import sqlite3
 import subprocess
 import tempfile
@@ -53,6 +55,19 @@ class CountryAndLanguageTests(unittest.TestCase):
 
 
 class PreciseScreeningTests(unittest.TestCase):
+    def test_parallel_progress_writes_keep_complete_records(self):
+        from concurrent.futures import ThreadPoolExecutor
+        class SlowStream(io.StringIO):
+            def write(self, value):
+                time.sleep(0.0005)
+                return super().write(value)
+        output = SlowStream()
+        with patch('sys.stdout', output), ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda value: jp.log('SEARCH_COUNTS ' + json.dumps({'sent':value}), flush=True), range(40)))
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 40)
+        self.assertEqual({json.loads(line.removeprefix('SEARCH_COUNTS '))['sent'] for line in lines}, set(range(40)))
+
     def config(self, **changes):
         return dict(dict(jp.CFG, role_keywords=['software developer', 'frontend engineer'],
                          include_keywords=['React', 'TypeScript', 'full-stack', 'fullstack'],

@@ -47,3 +47,5 @@
 !/tests/test_installation.py
 
 !/.gitattributes
+
+!/tests/test_live_progress.cjs

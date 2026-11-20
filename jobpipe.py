@@ -10,6 +10,7 @@ Usage:
   python jobpipe.py boards           # check which company board slugs work
   python jobpipe.py alerts           # collect links from job-alert emails
 """
+import builtins
 import argparse
 import hashlib
 import tempfile
@@ -69,6 +70,15 @@ honestly, briefly. Cite 2 concrete things from the CV that fit this role.)
 ## LinkedIn note
 (a connection request to the recruiter or hiring manager, max 280 characters,
 specific to this role, no flattery)"""
+
+
+OUTPUT_LOCK = Lock()
+
+
+def log(*args, **kwargs):
+    """Keep complete worker/main-thread messages together on the progress pipe."""
+    with OUTPUT_LOCK:
+        builtins.print(*args, **kwargs)
 
 
 # ---------- helpers ----------
@@ -134,30 +144,30 @@ def fetch_boards():
         for slug in CFG["boards"].get(kind, []):
             try:
                 found = fn(slug, [""])
-                print(f"  {kind}/{slug}: {len(found)} found")
+                log(f"  {kind}/{slug}: {len(found)} found")
                 jobs += found
             except Exception as e:
-                print(f"  {kind}/{slug}: skipped ({e})")
+                log(f"  {kind}/{slug}: skipped ({e})")
     for site in CFG.get("website_sources", []):
         if site not in websites.SITES:
             continue
         try:
             found, warnings = websites.fetch(site, ROOT / ".source-cache", countries=CFG.get("target_countries"))
-            print(f"  {site}: {len(found)} found ({len(warnings)} unavailable details)")
+            log(f"  {site}: {len(found)} found ({len(warnings)} unavailable details)")
             jobs += found
             if warnings:
-                print(f"  {site}: {warnings[0]}")
+                log(f"  {site}: {warnings[0]}")
         except Exception as error:
-            print(f"  {site}: skipped ({error})")
+            log(f"  {site}: skipped ({error})")
     for spec in CFG.get("custom_sources", []):
         if not spec.get("enabled", True):
             continue
         try:
             found, warnings = websites.fetch_custom(spec, ROOT / ".source-cache")
             jobs += found
-            print(f"  custom/{spec['name']}: {len(found)} found ({len(warnings)} unavailable details)")
+            log(f"  custom/{spec['name']}: {len(found)} found ({len(warnings)} unavailable details)")
         except Exception as error:
-            print(f"  custom/{spec.get('name', 'source')}: skipped ({error})")
+            log(f"  custom/{spec.get('name', 'source')}: skipped ({error})")
     return jobs
 
 
@@ -272,7 +282,7 @@ def process(cv, j):
             return j, a, "shortlisted", None
         return j, a, "low_score", None
     except Exception as e:  # network/API/JSON errors: retried on the next run
-        print(f"  error on {j['id']}: {e}")
+        log(f"  error on {j['id']}: {e}")
         return j, None, None, None
 
 
@@ -322,7 +332,7 @@ def rescore(request_file):
             if not row or row[1] == "applied":
                 continue
             counts["sent"] += 1
-            print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+            log("SEARCH_COUNTS " + json.dumps(counts), flush=True)
             folder_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", job["id"])[:80]
             target = actual_out / folder_name / "application.md"
             with tempfile.TemporaryDirectory(prefix="jobpipe-rescore-") as staging:
@@ -330,7 +340,7 @@ def rescore(request_file):
                 j, analysis, status, reason = process(cv, job)
                 OUT = actual_out
                 if status is None:
-                    print("Rescore failed; previous analysis retained for " + job["id"], flush=True)
+                    log("Rescore failed; previous analysis retained for " + job["id"], flush=True)
                     continue
                 if reason:
                     analysis["skip"] = reason
@@ -353,9 +363,9 @@ def rescore(request_file):
                     target.unlink()
                 if status == "shortlisted":
                     counts["shortlisted"] += 1
-            print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+            log("SEARCH_COUNTS " + json.dumps(counts), flush=True)
         export_review(con)
-        print("Rescoring finished. Failed jobs retain their previous results.", flush=True)
+        log("Rescoring finished. Failed jobs retain their previous results.", flush=True)
     finally:
         OUT = actual_out
         con.close()
@@ -369,16 +379,16 @@ def _run_locked():
     jobs = (fetch_arbeitnow() if CFG["use_arbeitnow"] else []) + fetch_boards() + fetch_inbox()
     alert_result = gmail_alerts.sync(ROOT)
     if alert_result["added"] or alert_result["errors"]:
-        print(f"  Gmail: {alert_result['added']} new alerts")
+        log(f"  Gmail: {alert_result['added']} new alerts")
         for error in alert_result["errors"]:
-            print(f"  Gmail: {error}")
+            log(f"  Gmail: {error}")
     jobs += gmail_alerts.postings(ROOT)
     jobs += [json.loads(row[0]) for row in con.execute("SELECT payload FROM candidates")]
     # Persist fresh source descriptions before rechecking historical local skips.
     dedup.collect(con, jobs)
     reconsidered = search_rank.reconsider(con, CFG)
     con.commit()
-    print('RECHECK_COUNTS ' + json.dumps(reconsidered), flush=True)
+    log('RECHECK_COUNTS ' + json.dumps(reconsidered), flush=True)
     collected_ids = {job['id'] for job in jobs}
     for row in con.execute('SELECT payload FROM candidates'):
         candidate = json.loads(row[0])
@@ -389,7 +399,7 @@ def _run_locked():
     for job in new:
         con.execute("INSERT OR REPLACE INTO candidates VALUES(?,?)", (job["id"], json.dumps(job)))
     con.commit()
-    print(f"{len(jobs)} postings, {len(new)} new")
+    log(f"{len(jobs)} postings, {len(new)} new")
 
     ranked = []
     rejected = {}
@@ -409,14 +419,14 @@ def _run_locked():
               'rejected': rejected, 'passed': len(ranked), 'ai_budget': CFG['max_llm_jobs_per_run'],
               'selected_for_ai': len(todo), 'deferred': max(0, len(ranked)-len(todo)),
               'scored': 0, 'failed': 0, 'needs_review': 0, 'reconsidered': reconsidered}
-    print("DEDUP_COUNTS " + json.dumps(duplicate_counts), flush=True)
-    print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
-    print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+    log("DEDUP_COUNTS " + json.dumps(duplicate_counts), flush=True)
+    log('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
+    log("SEARCH_COUNTS " + json.dumps(counts), flush=True)
 
     def score_selected(job):
         with progress_lock:
             counts["sent"] += 1
-            print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+            log("SEARCH_COUNTS " + json.dumps(counts), flush=True)
         return process(cv, job)
 
     progress_lock = Lock()
@@ -427,12 +437,12 @@ def _run_locked():
             if status is None:
                 failed += 1
                 funnel['failed'] += 1
-                print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
+                log('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
                 continue
             funnel['scored'] += 1
             if status == 'needs_review':
                 funnel['needs_review'] += 1
-            print('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
+            log('SEARCH_FUNNEL ' + json.dumps(funnel), flush=True)
             if reason:
                 a["skip"] = reason
             save(con, j, a["score"], status, a)
@@ -440,20 +450,20 @@ def _run_locked():
                 shortlisted += 1
                 with progress_lock:
                     counts["shortlisted"] = shortlisted
-                    print("SEARCH_COUNTS " + json.dumps(counts), flush=True)
-                print(f"  {a['score']:>3}  {j['title']} - {j['company']}"
+                    log("SEARCH_COUNTS " + json.dumps(counts), flush=True)
+                log(f"  {a['score']:>3}  {j['title']} - {j['company']}"
                       f"{'  [visa mentioned]' if a['visa_hint'] else ''}")
     con.execute("DELETE FROM candidates WHERE id IN (SELECT id FROM jobs)")
     con.commit()
     export_review(con)
-    print(f"Scored {len(todo) - failed}, failed {failed} (retry next run), "
+    log(f"Scored {len(todo) - failed}, failed {failed} (retry next run), "
           f"shortlisted {shortlisted}. See output/review.csv")
 
 
 def list_jobs():
     for r in db().execute("SELECT score,id,title,company,status FROM jobs "
                           "WHERE status IN ('shortlisted','applied') ORDER BY score DESC"):
-        print(f"{r[0]:>3}  [{r[4]}]  {r[1]}  {r[2]} - {r[3]}")
+        log(f"{r[0]:>3}  [{r[4]}]  {r[1]}  {r[2]} - {r[3]}")
 
 
 def mark_applied(job_id):
@@ -464,7 +474,7 @@ def mark_applied(job_id):
         (now.isoformat(timespec="seconds"),
          (now + timedelta(days=7)).isoformat(timespec="seconds"), job_id))
     con.commit()
-    print("marked applied, follow-up in 7 days" if cur.rowcount else "id not found")
+    log("marked applied, follow-up in 7 days" if cur.rowcount else "id not found")
 
 
 def followups():
@@ -472,13 +482,13 @@ def followups():
             "SELECT id,title,company,applied_at FROM jobs "
             "WHERE status='applied' AND follow_up_at<=?",
             (datetime.now().isoformat(timespec="seconds"),)):
-        print(f"{r[0]}  {r[1]} - {r[2]} (applied {r[3][:10]})")
+        log(f"{r[0]}  {r[1]} - {r[2]} (applied {r[3][:10]})")
 
 
 def boards():
     for kind in ("greenhouse", "lever"):
         for slug in CFG["boards"].get(kind, []):
-            print(f"{kind}/{slug}: {sources.check(kind, slug)}")
+            log(f"{kind}/{slug}: {sources.check(kind, slug)}")
 
 
 def alerts():
@@ -488,7 +498,7 @@ def alerts():
     for subject, links in leads:
         lines += [f"## {subject}", *[f"- {l}" for l in links], ""]
     (OUT / "alerts.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"{sum(len(l) for _, l in leads)} links -> output/alerts.md. "
+    log(f"{sum(len(l) for _, l in leads)} links -> output/alerts.md. "
           "Open the good ones, save the description into inbox/ to score them.")
 
 

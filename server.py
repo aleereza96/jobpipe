@@ -140,25 +140,54 @@ def validate_config(changes):
     return cfg
 
 
+PROGRESS_KEYS = {
+    'DEDUP_COUNTS': ('duplicates', 'reused'),
+    'SEARCH_COUNTS': ('found', 'passed', 'sent', 'shortlisted'),
+    'SEARCH_FUNNEL': ('collected', 'unique_candidates', 'passed', 'selected_for_ai', 'scored', 'failed', 'needs_review'),
+    'RECHECK_COUNTS': ('checked', 'requeued'),
+}
+
+
+def progress_records(line):
+    """Decode concatenated records too; one bad update must never kill the monitor."""
+    remaining = line.rstrip('\r\n')
+    decoder = json.JSONDecoder()
+    records = []
+    while remaining.strip():
+        remaining = remaining.lstrip()
+        kind = next((name for name in PROGRESS_KEYS if remaining.startswith(name + ' ')), None)
+        if not kind:
+            records.append(('log', remaining[:2000])); break
+        try:
+            payload, used = decoder.raw_decode(remaining[len(kind)+1:].lstrip())
+            if not isinstance(payload, dict) or any(type(payload.get(key)) is not int or payload[key] < 0 for key in PROGRESS_KEYS[kind]):
+                raise ValueError('Invalid progress counters')
+            records.append((kind, payload))
+            remaining = remaining[len(kind)+1:].lstrip()[used:]
+        except (ValueError, TypeError):
+            records.append(('log', 'A progress update could not be read; the search is still monitored.')); break
+    return records
+
+
 def watch(process):
     try:
         for line in process.stdout:
-            with LOCK:
-                if line.startswith('DEDUP_COUNTS '):
-                    RUN['dedup'] = json.loads(line[len('DEDUP_COUNTS '):])
-                elif line.startswith('SEARCH_FUNNEL '):
-                    RUN['funnel'] = json.loads(line[len('SEARCH_FUNNEL '):])
-                    try:
-                        atomic_write(DATA / 'last-search.json', json.dumps(RUN['funnel']))
-                    except OSError:
-                        LOGS.append('Could not save the search breakdown; current progress is still shown.')
-                elif line.startswith('SEARCH_COUNTS '):
-                    RUN['counts'] = json.loads(line[len('SEARCH_COUNTS '):])
-                elif line.startswith('RECHECK_COUNTS '):
-                    result = json.loads(line[len('RECHECK_COUNTS '):])
-                    LOGS.append(f"Rechecked {result['checked']} local rejections; {result['requeued']} recovered for scoring.")
-                else:
-                    LOGS.append(line.rstrip()[:2000])
+            for kind, payload in progress_records(line):
+                with LOCK:
+                    if kind == 'DEDUP_COUNTS':
+                        RUN['dedup'] = payload
+                    elif kind == 'SEARCH_FUNNEL':
+                        RUN['funnel'] = payload
+                        try:
+                            atomic_write(DATA / 'last-search.json', json.dumps(payload))
+                        except OSError:
+                            LOGS.append('Could not save the search breakdown; current progress is still shown.')
+                    elif kind == 'SEARCH_COUNTS':
+                        RUN['counts'] = payload
+                    elif kind == 'RECHECK_COUNTS':
+                        LOGS.append(f"Rechecked {payload['checked']} local rejections; {payload['requeued']} recovered for scoring.")
+                    else:
+                        LOGS.append(payload)
         code = process.wait()
         with LOCK:
             RUN.update(state=('stopped' if RUN['state'] == 'stopping' else 'completed' if code == 0 else 'failed'),
@@ -172,7 +201,7 @@ def watch(process):
 def start_run(rescore_request=None):
     global PROCESS
     with LOCK:
-        if RUN['state'] in ('running', 'stopping'):
+        if RUN['state'] in ('running', 'stopping') or (PROCESS is not None and PROCESS.poll() is None):
             raise ValueError('A search is already running')
         config = json.loads((DATA / 'config.json').read_text())
         if config.get('ai_provider', 'codex') == 'codex':
@@ -328,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
                     counts = {r[0]: r[1] for r in con.execute('SELECT status,count(*) FROM jobs GROUP BY status')}
                     due = con.execute("SELECT count(*) FROM jobs WHERE status='applied' AND follow_up_at<=?", (datetime.now().isoformat(),)).fetchone()[0]
                 with connect() as con:
-                    pending = con.execute('SELECT count(*) FROM candidates').fetchone()[0] if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidates'").fetchone() else 0
+                    pending = con.execute('SELECT count(*) FROM candidates WHERE id NOT IN (SELECT id FROM jobs)').fetchone()[0] if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='candidates'").fetchone() else 0
                 return self.reply({'counts': counts, 'due': due, 'total': sum(counts.values()), 'pending': pending})
             if parsed.path == '/api/run':
                 with LOCK: snapshot = dict(RUN, logs=list(LOGS))

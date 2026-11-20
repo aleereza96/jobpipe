@@ -378,6 +378,18 @@ Collected references are broad source results, not a count of compatible jobs.
 local rejections by reason, candidates passing filters, the selection sent to AI,
 remaining candidates deferred by your budget, completed AI scores, failures and
 eligibility reviews. The most recently recorded breakdown survives restarts.
+During a search, the results table and totals refresh every ten seconds. Completed
+results appear before the batch finishes. “Selected for AI” is the planned batch;
+“AI jobs started” and the finished/processing/not-started counts show actual progress.
+A job may need separate scoring, evidence and drafting calls, so selecting 40 jobs
+does not mean 40 jobs have finished. You can refresh the page without cancelling
+an active search. Stopping preserves completed results and leaves unfinished work
+retryable. Workers serialize their output so progress messages cannot interleave.
+The monitor also accepts concatenated records and skips malformed updates without
+abandoning the search. Pending counts exclude jobs already saved during a run.
+A still-running worker prevents starting a duplicate search even if its monitor
+has reported a problem.
+
 Repeated source references and already processed references can overlap; those
 reference counts should not be added together as separate jobs.
 
@@ -751,6 +763,7 @@ For contributors, run the existing checks in an environment with dependencies in
 ```sh
 python -m unittest discover -s tests -v
 node --check web/app.js
+node --test tests/test_live_progress.cjs
 docker compose config --quiet
 ```
 

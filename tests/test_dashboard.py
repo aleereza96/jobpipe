@@ -1,4 +1,5 @@
 import http.client
+import io
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,43 @@ import server
 
 
 class DashboardTests(unittest.TestCase):
+    def test_progress_monitor_recovers_concatenated_and_malformed_updates(self):
+        counts = dict(found=60, passed=20, sent=3, shortlisted=1)
+        funnel = dict(collected=60, unique_candidates=25, passed=20, selected_for_ai=20,
+                      scored=2, failed=0, needs_review=0)
+        lines = 'SEARCH_COUNTS ' + json.dumps(counts) + 'SEARCH_FUNNEL ' + json.dumps(funnel) + '\n'
+        lines += 'SEARCH_COUNTS {broken json\n'
+        lines += 'RECHECK_COUNTS {}\n'
+        lines += 'SEARCH_COUNTS ' + json.dumps(dict(counts, sent=4)) + '\n'
+        process = unittest.mock.MagicMock()
+        process.stdout = io.StringIO(lines)
+        def finish():
+            self.assertEqual(server.RUN['state'], 'running')
+            return 0
+        process.wait.side_effect = finish
+        with patch.dict(server.RUN, {'state':'running'}, clear=True):
+            server.watch(process)
+            self.assertEqual(server.RUN['state'], 'completed')
+            self.assertEqual(server.RUN['exit_code'], 0)
+            self.assertEqual(server.RUN['counts']['sent'], 4)
+            self.assertEqual(server.RUN['funnel']['scored'], 2)
+        self.assertTrue(any('still monitored' in line for line in server.LOGS))
+
+    def test_pending_count_does_not_include_completed_jobs_left_in_backlog(self):
+        with server.connect() as con:
+            con.execute('CREATE TABLE candidates(id TEXT PRIMARY KEY,payload TEXT NOT NULL)')
+            con.execute("INSERT INTO jobs(id,title,status,score) VALUES('done','Engineer','shortlisted',85)")
+            con.executemany('INSERT INTO candidates VALUES(?,?)', [('done','{}'),('waiting','{}')])
+        self.assertEqual(self.request('/api/stats')[1]['pending'], 1)
+
+    def test_monitor_error_cannot_start_a_duplicate_worker(self):
+        process = unittest.mock.MagicMock()
+        process.poll.return_value = None
+        with patch.object(server, 'PROCESS', process), patch.dict(server.RUN, {'state':'failed'}), patch('server.subprocess.Popen') as launch:
+            with self.assertRaisesRegex(ValueError, 'already running'):
+                server.start_run()
+            launch.assert_not_called()
+
     def test_country_and_language_preferences_validation(self):
         changes = dict(target_countries=['de', 'nl'], english_only=True,
                        exclude_dutch_required=True, language_unknown_policy='review')
