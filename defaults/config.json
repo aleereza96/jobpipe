@@ -32,5 +32,9 @@
   "required_keywords": [],
   "sponsorship_required": false,
   "unknown_policy": "review",
-  "review_limit": 10
+  "review_limit": 10,
+  "target_countries": [],
+  "english_only": false,
+  "exclude_dutch_required": false,
+  "language_unknown_policy": "review"
 }

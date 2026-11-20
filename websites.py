@@ -18,11 +18,12 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 from sources import clean
+from search_rank import COUNTRIES
 
 SITES = {
     'germantechjobs': dict(name='GermanTechJobs', url='https://germantechjobs.de/en', feed='https://germantechjobs.de/rss'),
     'devjobs': dict(name='DEVjobs Germany', url='https://en.devjobs.de/', listing='https://en.devjobs.de/jobs/search'),
-    'nextleveljobs': dict(name='Next Level Jobs · Germany', url='https://nextleveljobs.eu/country/de', listing='https://nextleveljobs.eu/country/de'),
+    'nextleveljobs': dict(name='Next Level Jobs · selected countries', url='https://nextleveljobs.eu/', listing='https://nextleveljobs.eu/country/de'),
     'berlinstartupjobs': dict(name='Berlin Startup Jobs · Engineering', url='https://berlinstartupjobs.com/engineering/', feed='https://berlinstartupjobs.com/engineering/feed/'),
 }
 MAX_DETAILS = 30
@@ -134,6 +135,10 @@ def normalize(post, url, site):
             names.append(', '.join(parts))
     if post.get('jobLocationType') == 'TELECOMMUTE':
         names.append('Remote')
+        eligible = post.get('applicantLocationRequirements') or []
+        for place in eligible if isinstance(eligible, list) else [eligible]:
+            if isinstance(place, dict) and isinstance(place.get('name'), str):
+                names.append('Eligible country: ' + place['name'])
     return dict(id=site + '-' + hashlib.sha256(url.encode()).hexdigest()[:24],
                 title=title, company=company, description=description,
                 location='; '.join(dict.fromkeys(x for x in names if x)),
@@ -170,8 +175,10 @@ def detail(url, site, cache, base=None, reader=None):
     raise ValueError('No complete public structured job description found')
 
 
-def fetch(site, cache=None, limit=MAX_DETAILS):
-    spec = SITES[site]
+def _fetch(site, cache=None, limit=MAX_DETAILS, listing=None, deadline=None):
+    spec = dict(SITES[site])
+    if listing:
+        spec["listing"] = listing
     started = time.monotonic()
     jobs, links, warnings = [], [], []
     if 'feed' in spec:
@@ -206,7 +213,7 @@ def fetch(site, cache=None, limit=MAX_DETAILS):
             if re.fullmatch(pattern, urlsplit(url).path):
                 links.append(url)
     for url in list(dict.fromkeys(links))[:min(limit, MAX_DETAILS)]:
-        if time.monotonic() - started > 90:
+        if time.monotonic() > (deadline if deadline is not None else started + 90):
             warnings.append('Import time limit reached; only a bounded sample was checked.')
             break
         try:
@@ -220,6 +227,34 @@ def fetch(site, cache=None, limit=MAX_DETAILS):
     if not jobs:
         raise ValueError(warnings[0] if warnings else 'No public listings found. The website may have changed or restricted access.')
     return jobs, warnings
+
+
+def fetch(site, cache=None, limit=MAX_DETAILS, countries=None):
+    if site != 'nextleveljobs' or not countries:
+        return _fetch(site, cache, limit)
+    selected = list(dict.fromkeys(code for code in countries if code in COUNTRIES))
+    if not selected:
+        raise ValueError('Choose a supported country in Preferences.')
+    jobs, warnings = {}, []
+    deadline = time.monotonic() + 90
+    # Share the existing detail allowance across countries, rather than multiplying it.
+    for index, code in enumerate(selected):
+        allowance = limit // len(selected) + int(index < limit % len(selected))
+        if not allowance:
+            continue
+        if time.monotonic() > deadline:
+            warnings.append('Import time limit reached before all selected countries could be checked.')
+            break
+        try:
+            found, notes = _fetch(site, cache, allowance, 'https://nextleveljobs.eu/country/' + code, deadline=deadline)
+            for job in found:
+                jobs[job['id']] = job
+            warnings.extend(notes)
+        except (ValueError, requests.RequestException) as error:
+            warnings.append(COUNTRIES[code]['name'] + ': ' + str(error))
+    if not jobs:
+        raise ValueError('; '.join(warnings) or 'No public jobs found in selected countries.')
+    return list(jobs.values()), warnings
 
 
 def public_url(value):

@@ -15,6 +15,24 @@ def posting(**changes):
 
 
 class WebsiteTests(unittest.TestCase):
+    def test_nextlevel_country_selection_shares_budget_and_identity(self):
+        def fake(site, cache, limit, listing=None, deadline=None):
+            return [dict(id='same', title='Same role')], []
+        with patch.object(w, '_fetch', side_effect=fake) as fetch:
+            jobs, _ = w.fetch('nextleveljobs', limit=3, countries=['de', 'nl'])
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual([call.args[2] for call in fetch.call_args_list], [2, 1])
+        self.assertEqual([call.args[3] for call in fetch.call_args_list], ['https://nextleveljobs.eu/country/de', 'https://nextleveljobs.eu/country/nl'])
+        self.assertEqual(fetch.call_args_list[0].kwargs['deadline'], fetch.call_args_list[1].kwargs['deadline'])
+        with patch.object(w, '_fetch', side_effect=[ValueError('Blocked'), ([{'id': 'nl'}], [])]):
+            jobs, warnings = w.fetch('nextleveljobs', countries=['de', 'nl'])
+        self.assertEqual(jobs[0]['id'], 'nl')
+        self.assertIn('Germany', warnings[0])
+
+    def test_remote_applicant_country_is_preserved(self):
+        post = posting(jobLocationType='TELECOMMUTE', applicantLocationRequirements={'name': 'Netherlands'})
+        self.assertIn('Eligible country: Netherlands', w.normalize(post, 'https://example.com/job', 'test')['location'])
+
     def test_custom_structured_page_feed_and_query_links(self):
         spec = w.custom_spec('My source', 'https://example.com/search?q=python')
         url = 'https://example.com/job?id=123'

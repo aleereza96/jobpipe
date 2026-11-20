@@ -371,6 +371,44 @@ uses scoring and evidence calls; a qualifying job also uses a drafting call.
 Optional CV reviews make additional calls. Evidence failure does not discard an
 otherwise scored job. Stop controls preserve completed results.
 
+### Search Germany and the Netherlands
+
+In **Preferences → Countries and locations**, select **Germany**, **Netherlands**,
+or both, then save. Country names, uppercase country codes and common city aliases
+are recognized locally before AI scoring. **Additional locations** expands that
+selection (country OR location term); it does not restrict a country to those cities.
+The alias list is not a complete geocoder. A posting with no usable location still
+follows your missing-location preference, and “Remote EMEA” alone does not establish
+Netherlands eligibility. Structured remote applicant-country restrictions are
+preserved when a source supplies them.
+
+Enable **Next Level Jobs** in **Job sources** to fetch public listings for the
+selected countries. With no country selection, its original Germany coverage stays
+in place. Both countries share the existing 30-detail / 90-second source allowance;
+adding a country does not multiply the AI scoring limit. Other website switches
+keep their own coverage; disable Germany-only sources if you want Netherlands only.
+
+The **Netherlands employer boards** section offers previews for Adyen, Catawiki
+and TomTom. Click **Preview**, review sample listings, then **Save source**.
+Their boards may cover several countries: your Preferences decide which jobs pass.
+These public boards were checked for Netherlands openings; no claim is made that
+all roles are in English, offer sponsorship or support relocation. DevITJobs is
+not enabled automatically because the returned RSS feed showed old dates during
+source review.
+
+In **Working language**, enable **English-only roles** to reject explicit Dutch
+or German requirements. Alternatively, use the individual Dutch/German exclusion
+switches. Choose whether unconfirmed English should **stay for review** or be
+excluded before scoring. An English-written advertisement is not evidence of an
+English working language. These conservative checks use explicit phrases and may
+miss unusual wording; verify the posting. Missing English evidence kept for review
+appears in eligibility checks and the focused review queue. Language evidence is
+shown on newly scored job details, without an extra AI call. Country and language
+settings do not rewrite existing analyses. Country filtering applies to future
+searches and does not hide existing saved jobs. Explicit rescoring refreshes CV
+scores and language checks, but deliberately does not reapply discovery location
+filters to jobs you selected for rescoring.
+
 ### Native setup on macOS, Linux, or WSL 2
 
 Install Python 3.10+ and Node.js 22+ with npm. On Debian/Ubuntu, Python's

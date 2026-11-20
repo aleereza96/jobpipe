@@ -11,6 +11,12 @@ from urllib.parse import urlsplit
 
 import requests
 
+SUGGESTED_BOARDS = [
+    {'name': 'Adyen', 'url': 'https://job-boards.greenhouse.io/adyen', 'country': 'nl'},
+    {'name': 'Catawiki', 'url': 'https://job-boards.greenhouse.io/catawiki', 'country': 'nl'},
+    {'name': 'TomTom', 'url': 'https://jobs.eu.lever.co/tomtom', 'country': 'nl'},
+]
+
 TAG = re.compile(r"<[^>]+>")
 
 

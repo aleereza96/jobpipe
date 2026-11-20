@@ -9,6 +9,47 @@ from unittest.mock import patch
 
 import ai_provider as ai
 import jobpipe as jp
+import search_rank
+
+
+class CountryAndLanguageTests(unittest.TestCase):
+    def test_country_selection_aliases_and_existing_locations(self):
+        config = dict(jp.CFG, target_countries=['nl'], location_keywords=[],
+                      include_keywords=[], exclude_keywords=[], role_keywords=[])
+        for location in ('Amsterdam', 'Nederland', 'Utrecht, NL', 'The Hague', 'Den Haag'):
+            job = dict(title='Engineer', description='Build services', location=location)
+            self.assertIsNone(search_rank.evaluate(job, config)[0], location)
+        self.assertIsNotNone(search_rank.evaluate(dict(title='Engineer', description='', location='Berlin'), config)[0])
+        config['location_keywords'] = ['Berlin']
+        self.assertTrue(search_rank.location_matches('Berlin', config))
+        config.update(target_countries=[], location_keywords=['Munich'])
+        self.assertFalse(search_rank.location_matches('Amsterdam', config))
+        self.assertTrue(search_rank.location_matches('Munich', config))
+        self.assertFalse(search_rank.location_matches('Île de France', dict(config, target_countries=['de'], location_keywords=[])))
+
+    def test_language_requirements_negation_and_unknown_policy(self):
+        config = dict(english_only=True, language_unknown_policy='review')
+        for text in ('Fluent Dutch required.', 'Dutch (C1) required.', 'German: C1 required.', 'Dutch is mandatory.', 'Vloeiend Nederlands vereist.', 'Fluent German and English required.'):
+            self.assertIsNotNone(search_rank.language_reason(dict(title='Engineer', description=text), config), text)
+        for text in ('Fluent English required.', 'English is our working language. Dutch is not required.', 'Fluent Dutch is a plus. Fluent English required.', 'Fluent Dutch is not required. Fluent English required.', 'You do not need to be fluent Dutch. Fluent English required.', 'German-speaking customers. Working language is English.'):
+            self.assertIsNone(search_rank.language_reason(dict(title='Engineer', description=text), config), text)
+        job = dict(title='Engineer', description='Build services in an international team.')
+        self.assertIsNone(search_rank.language_reason(job, config))
+        self.assertEqual(search_rank.eligibility(job, config)['status'], 'needs checking')
+        self.assertEqual(search_rank.language_reason(job, dict(config, language_unknown_policy='exclude')), 'English working language unconfirmed')
+        self.assertEqual(search_rank.language_assessment(dict(title='Engineer', description='Fluent English is optional.'))['english'], 'unknown')
+        self.assertIsNone(search_rank.language_reason(dict(title='Engineer', description='Fließend Englisch erforderlich.'), {'exclude_german_required': True}))
+
+    def test_language_screen_happens_before_ai_and_review_is_independent(self):
+        config = dict(jp.CFG, english_only=True, language_unknown_policy='review',
+                      unknown_policy='exclude', required_keywords=[], sponsorship_required=False,
+                      target_countries=['nl'], location_keywords=[], include_keywords=[], role_keywords=[], exclude_keywords=[])
+        job = dict(title='Engineer', location='Amsterdam', description='Fluent Dutch required.')
+        with patch.dict(jp.CFG, config), patch.object(jp, 'ask') as ai:
+            self.assertEqual(jp.prefilter(job)[0], 'Dutch required')
+            job['description'] = 'Build services in a collaborative team.'
+            self.assertIsNone(jp.prefilter(job)[0])
+            ai.assert_not_called()
 
 
 def analysis(**changes):

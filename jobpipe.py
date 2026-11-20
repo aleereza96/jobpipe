@@ -43,12 +43,6 @@ CFG = json.loads((CONFIG_PATH if CONFIG_PATH.exists() else DEFAULT_CONFIG).read_
 DB_PATH = ROOT / "jobs.db"
 OUT = ROOT / "output"
 
-GERMAN_REQ = re.compile(
-    r"(fließend|verhandlungssicher|muttersprach|fluent german|"
-    r"german\s*(\(|:)?\s*(c1|c2|native)|deutsch\w*\s*(c1|c2))",
-    re.I,
-)
-
 SCORE_SYS = """You evaluate a job posting against a candidate's CV.
 Reply with JSON only, no prose, no code fences:
 {"score": 0-100, "matches": [..], "gaps": [..], "german_required": true|false,
@@ -147,7 +141,7 @@ def fetch_boards():
         if site not in websites.SITES:
             continue
         try:
-            found, warnings = websites.fetch(site, ROOT / ".source-cache")
+            found, warnings = websites.fetch(site, ROOT / ".source-cache", countries=CFG.get("target_countries"))
             print(f"  {site}: {len(found)} found ({len(warnings)} unavailable details)")
             jobs += found
             if warnings:
@@ -182,10 +176,10 @@ def fetch_inbox():
 
 # ---------- 2. filter ----------
 def prefilter(j):
-    if CFG.get("exclude_german_required", False) and GERMAN_REQ.search(
-            (j["title"] or "") + " " + (j["description"] or "")):
-        return "German required", 0
-    eligibility = search_rank.eligibility(j, CFG)
+    language = search_rank.language_reason(j, CFG)
+    if language:
+        return language, 0
+    eligibility = search_rank.eligibility(j, CFG, include_language=False)
     if eligibility["status"] == "excluded" or (eligibility["status"] == "needs checking" and CFG.get("unknown_policy") == "exclude"):
         return "eligibility requirements not satisfied", 0
     return search_rank.evaluate(j, CFG)
@@ -196,8 +190,10 @@ def visa_hint(j):
 
 
 def skip_reason(a):
-    if CFG.get("exclude_german_required", False) and a.get("german_required"):
+    if (CFG.get("exclude_german_required", False) or CFG.get("english_only")) and a.get("german_required"):
         return "German required"
+    if a.get("language_rejection"):
+        return a["language_rejection"]
     sal = a.get("salary_eur_yearly_max")
     if isinstance(sal, (int, float)) and 0 <= sal < CFG["min_salary_eur"]:
         return f"salary below {CFG['min_salary_eur']}"
@@ -238,6 +234,8 @@ def score_job(cv, j):
     except (RuntimeError, ValueError, TypeError, AttributeError):
         result["evidence"] = []
         result["evidence_status"] = "Evidence unavailable; review the posting"
+    result["language"] = search_rank.language_assessment(j)
+    result["language_rejection"] = search_rank.language_reason(j, CFG)
     result["agents"] = {stage: agent_stamp(CFG, stage) for stage in ("scoring", "evidence", "drafting")}
     result["cv_fingerprint"] = hashlib.sha256(cv.encode()).hexdigest()
     result["scored_at"] = datetime.now().isoformat(timespec="seconds")

@@ -25,6 +25,7 @@ import secrets
 import websites
 import gmail_alerts
 import dedup
+import search_rank
 import runtime_support
 import codex_login
 from ai_provider import validate_agents
@@ -92,7 +93,7 @@ def validate_config(changes):
                'ai_timeout_seconds': (10, 1800), 'arbeitnow_pages': (1, 30)}
     arrays = {'required_keywords', 'include_keywords', 'exclude_keywords', 'location_keywords', 'visa_keywords', 'role_keywords'}
     strings = {'candidate_note', 'anthropic_model'}
-    allowed = set(numeric) | arrays | strings | {'agents', 'agent_assignments', 'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
+    allowed = set(numeric) | arrays | strings | {'agents', 'agent_assignments', 'sponsorship_required', 'unknown_policy', 'ai_provider', 'codex_model', 'use_arbeitnow', 'boards', 'target_countries', 'english_only', 'exclude_dutch_required', 'language_unknown_policy', 'include_unknown_location', 'include_relocation_outside_locations', 'exclude_german_required'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unrecognized settings')
     for key, value in changes.items():
@@ -106,6 +107,13 @@ def validate_config(changes):
         elif key in strings:
             if not isinstance(value, str) or len(value) > 6000:
                 raise ValueError(f'Invalid {key}')
+        elif key == 'target_countries':
+            if not isinstance(value, list) or any(not isinstance(code, str) or code not in search_rank.COUNTRIES for code in value) or len(value) != len(set(value)):
+                raise ValueError('Choose supported countries without duplicates.')
+        elif key in ('english_only', 'exclude_dutch_required') and type(value) is not bool:
+            raise ValueError('Invalid language preference.')
+        elif key == 'language_unknown_policy' and value not in ('review', 'exclude'):
+            raise ValueError('Choose how to handle unconfirmed English.')
         elif key == 'unknown_policy' and value not in ('review', 'exclude'):
             raise ValueError('Invalid unknown policy')
         elif key == 'sponsorship_required' and type(value) is not bool:
@@ -274,7 +282,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path == '/api/boards':
                 config = json.loads((DATA / 'config.json').read_text())
-                return self.reply({**config.get('boards', {}), 'custom_sources': config.get('custom_sources', []), 'websites': [
+                return self.reply({**config.get('boards', {}), 'suggested_boards': sources.SUGGESTED_BOARDS, 'target_countries': config.get('target_countries', []), 'custom_sources': config.get('custom_sources', []), 'websites': [
                     dict(id=key, **value, enabled=key in config.get('website_sources', []))
                     for key, value in websites.SITES.items()]})
             if parsed.path == '/api/gmail':
@@ -557,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
                         atomic_write(DATA / 'config.json', json.dumps(config, indent=2) + '\n')
                     return self.reply({'ok': True})
                 try:
-                    jobs, warnings = websites.fetch(site, DATA / '.source-cache', limit=3)
+                    jobs, warnings = websites.fetch(site, DATA / '.source-cache', limit=3, countries=json.loads((DATA / 'config.json').read_text()).get('target_countries'))
                 except Exception as error:
                     raise ValueError(f'Could not import: {error}') from None
                 return self.reply({'count': len(jobs), 'warnings': warnings,

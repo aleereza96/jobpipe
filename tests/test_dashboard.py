@@ -13,6 +13,19 @@ import server
 
 
 class DashboardTests(unittest.TestCase):
+    def test_country_and_language_preferences_validation(self):
+        changes = dict(target_countries=['de', 'nl'], english_only=True,
+                       exclude_dutch_required=True, language_unknown_policy='review')
+        self.assertEqual(self.request('/api/settings', {'config': changes})[0], 200)
+        saved = self.request('/api/settings')[1]['config']
+        for key, value in changes.items():
+            self.assertEqual(saved[key], value)
+        for invalid in ({'target_countries': ['zz']}, {'target_countries': ['nl', 'nl']}, {'target_countries': [None]}, {'english_only': 'yes'}, {'language_unknown_policy': 'guess'}):
+            self.assertEqual(self.request('/api/settings', {'config': invalid})[0], 400)
+        with patch('websites.fetch', return_value=([dict(title='Engineer', location='Amsterdam')], [])) as fetch:
+            self.assertEqual(self.request('/api/websites/preview', {'id': 'nextleveljobs'})[0], 200)
+            self.assertEqual(fetch.call_args.kwargs['countries'], ['de', 'nl'])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
